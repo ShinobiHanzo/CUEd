@@ -110,14 +110,10 @@ class LinkResolver(private val userAgent: String) {
         val og = runCatching {
             val head = getHead(url) ?: return@runCatching null
             val title = meta(head, "og:title") ?: meta(head, "twitter:title")
-            val desc = meta(head, "og:description")
-            val t = title?.replace(Regex("\\s*[|·\\-–]\\s*(Spotify|Apple Music|Deezer|TIDAL|SoundCloud|Bandcamp|Amazon Music).*$", RegexOption.IGNORE_CASE), "")
-            when {
-                t.isNullOrBlank() -> null
-                t.contains(", by ") -> t.replace(", by ", " ")                     // Bandcamp style
-                desc != null && Regex("^(Song|Album|Track)\\s*·", RegexOption.IGNORE_CASE).containsMatchIn(desc) -> t
-                else -> t
-            }
+            val t: String? = title?.replace(Regex("\\s*[|·\\-–]\\s*(Spotify|Apple Music|Deezer|TIDAL|SoundCloud|Bandcamp|Amazon Music).*$", RegexOption.IGNORE_CASE), "")
+            if (t.isNullOrBlank()) null
+            else if (t.contains(", by ")) t.replace(", by ", " ")                     // Bandcamp style
+            else t
         }.getOrNull()
         val q = og ?: hintQuery
         return if (q.isNullOrBlank()) Result.Unsupported("Couldn't work out what that link points to. Paste the artist and title instead.")
