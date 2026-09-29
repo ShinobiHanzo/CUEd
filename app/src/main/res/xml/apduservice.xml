@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Host card emulation: when another phone running CUEd taps this one, it
+     selects this AID and reads the share payload. Payment/transit AIDs are
+     untouched; this is a proprietary (F0-prefixed) AID. -->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/nfc_service_description"
+    android:requireDeviceUnlock="false">
+    <aid-group android:category="other" android:description="@string/nfc_service_description">
+        <aid-filter android:name="F043554544" />
+    </aid-group>
+</host-apdu-service>

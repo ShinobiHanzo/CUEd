@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: Core unit tests (JVM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run :core tests
+        run: ./gradlew :core:test --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-test-report
+          path: core/build/reports/tests/test
+
+  android:
+    name: Assemble debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble debug
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Lint (non-fatal)
+        run: ./gradlew :app:lintDebug --no-daemon || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cued-debug-apk
+          path: app/build/outputs/apk/debug/*.apk

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five spectrum bars and a cue marker. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#5EF2C6" android:pathData="M30,66 h6 v12 h-6 z" />
+    <path android:fillColor="#5EF2C6" android:pathData="M40,52 h6 v26 h-6 z" />
+    <path android:fillColor="#FFB86B" android:pathData="M50,34 h6 v44 h-6 z" />
+    <path android:fillColor="#5EF2C6" android:pathData="M60,46 h6 v32 h-6 z" />
+    <path android:fillColor="#5EF2C6" android:pathData="M70,58 h6 v20 h-6 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M28,82 h52 v3 h-52 z" />
+    <path android:fillColor="#FFB86B" android:pathData="M53,80 l3,-5 l3,5 z" />
+</vector>

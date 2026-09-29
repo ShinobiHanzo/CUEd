@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# Android / IDE
+local.properties
+*.iml
+.idea/
+captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+!debug.keystore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python companion
+tools/spotdl-server/__pycache__/
+tools/spotdl-server/downloads/
+tools/spotdl-server/.venv/

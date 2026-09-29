@@ -1,0 +1,334 @@
+package dev.cued.app.ui
+
+import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.Color as AColor
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import dev.cued.app.Graph
+import dev.cued.app.data.DownloadBackend
+import dev.cued.app.data.DownloadSettings
+import dev.cued.app.data.PlaybackSettings
+import dev.cued.app.data.ScrubberMode
+import dev.cued.app.data.SmartList
+import dev.cued.app.data.UiSettings
+import dev.cued.app.data.db.DownloadJobEntity
+import dev.cued.app.data.db.PlaylistEntity
+import dev.cued.app.data.db.TrackEntity
+import dev.cued.app.download.CompanionDownloader
+import dev.cued.app.download.TermuxDownloader
+import dev.cued.app.playback.MediaItems
+import dev.cued.app.playback.PlayerConnection
+import dev.cued.app.playback.SpectrumBus
+import dev.cued.app.playback.TransitionInfo
+import dev.cued.app.share.QrCodes
+import dev.cued.core.dsp.SpectrogramImage
+import dev.cued.core.mix.CrossfadeCurve
+import dev.cued.core.mix.TrackTempo
+import dev.cued.core.share.SharePayload
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+
+val LocalGraph = staticCompositionLocalOf<Graph> { error("Graph not provided") }
+
+@Suppress("UNCHECKED_CAST")
+class CuedVmFactory(private val graph: Graph) : ViewModelProvider.Factory {
+    @OptIn(UnstableApi::class)
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
+        modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(graph) as T
+        modelClass.isAssignableFrom(PlayerViewModel::class.java) -> PlayerViewModel(graph) as T
+        modelClass.isAssignableFrom(DownloadViewModel::class.java) -> DownloadViewModel(graph) as T
+        modelClass.isAssignableFrom(ShareViewModel::class.java) -> ShareViewModel(graph) as T
+        modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(graph) as T
+        else -> error("Unknown ViewModel $modelClass")
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class LibraryViewModel(private val graph: Graph) : ViewModel() {
+    private val lib = graph.library
+    val query = MutableStateFlow("")
+    val tracks: StateFlow<List<TrackEntity>> = query.flatMapLatest { lib.search(it) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val genreMap: StateFlow<Map<Long, List<String>>> = lib.genreMap.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    val genres: StateFlow<List<String>> = lib.genres.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val playlists: StateFlow<List<PlaylistEntity>> = lib.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val smartLists: StateFlow<Map<SmartList, List<TrackEntity>>> = lib.smartLists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    val scanning: StateFlow<Boolean> = lib.scanning
+    val analysisPending: StateFlow<Int> = graph.analysis.pending
+    val analysisCurrent: StateFlow<Long?> = graph.analysis.current
+
+    fun byGenre(genre: String): Flow<List<TrackEntity>> = lib.byGenre(genre)
+    fun playlistTracks(id: Long): Flow<List<TrackEntity>> = lib.playlistTracks(id)
+    fun playlist(id: Long): Flow<PlaylistEntity?> = lib.observePlaylist(id)
+    fun track(id: Long): Flow<TrackEntity?> = lib.observeTrack(id)
+
+    fun rescan() = lib.rescanAsync()
+    fun analyseAll() = graph.analysis.sweep()
+    fun analyse(trackId: Long) = graph.analysis.request(trackId, urgent = true)
+    fun toggleFavourite(t: TrackEntity) = viewModelScope.launch { lib.setFavourite(t.id, !t.favourite) }
+    fun setGenres(trackId: Long, genres: List<String>) = viewModelScope.launch { lib.setGenres(trackId, genres) }
+    fun addGenre(trackId: Long, genre: String) = viewModelScope.launch { lib.addGenre(trackId, genre) }
+    fun removeGenre(trackId: Long, genre: String) = viewModelScope.launch { lib.removeGenre(trackId, genre) }
+    fun setSourceLink(trackId: Long, link: String?) = viewModelScope.launch { lib.setSourceLink(trackId, link?.takeIf { it.isNotBlank() }) }
+
+    fun createPlaylist(name: String, then: (Long) -> Unit = {}) = viewModelScope.launch { then(lib.createPlaylist(name)) }
+    fun renamePlaylist(id: Long, name: String, description: String) = viewModelScope.launch { lib.renamePlaylist(id, name, description) }
+    fun deletePlaylist(id: Long) = viewModelScope.launch { lib.deletePlaylist(id) }
+    fun addToPlaylist(playlistId: Long, trackId: Long) = viewModelScope.launch { lib.addToPlaylist(playlistId, trackId) }
+    fun removeFromPlaylist(playlistId: Long, trackId: Long) = viewModelScope.launch { lib.removeFromPlaylist(playlistId, trackId) }
+    fun reorderPlaylist(playlistId: Long, ids: List<Long>) = viewModelScope.launch { lib.reorderPlaylist(playlistId, ids) }
+    fun saveAsPlaylist(name: String, ids: List<Long>, then: (Long) -> Unit = {}) = viewModelScope.launch { then(lib.saveAsPlaylist(name, ids)) }
+
+    suspend fun similarTo(trackId: Long) = lib.similarTo(trackId)
+    suspend fun playlistsContaining(trackId: Long) = lib.playlistsContaining(trackId)
+}
+
+// ---------------------------------------------------------------------------
+
+data class PlayerUiState(
+    val connected: Boolean = false,
+    val isPlaying: Boolean = false,
+    val playbackState: Int = Player.STATE_IDLE,
+    val trackId: Long? = null,
+    val title: String = "",
+    val artist: String = "",
+    val artworkUri: android.net.Uri? = null,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val shuffle: Boolean = false,
+    val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val queue: List<MediaItem> = emptyList(),
+    val queueIndex: Int = -1,
+)
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@UnstableApi
+class PlayerViewModel(private val graph: Graph) : ViewModel() {
+    val connection = PlayerConnection(graph.app)
+    private val _state = MutableStateFlow(PlayerUiState())
+    val state: StateFlow<PlayerUiState> = _state
+    val transition: StateFlow<TransitionInfo?> = graph.player.player.transitionInfo
+    val currentTempo: StateFlow<TrackTempo?> = graph.player.player.currentTempo
+    val spectrumBus: SpectrumBus get() = graph.player.spectrumBus
+    val uiSettings: StateFlow<UiSettings> = graph.settings.ui.stateIn(viewModelScope, SharingStarted.Eagerly, UiSettings(ScrubberMode.REACTIVE_SPECTROGRAM, 120, 48))
+    val currentTrack: StateFlow<TrackEntity?> = _state.map { it.trackId }.flatMapLatest { id -> if (id == null) MutableStateFlow(null) else graph.library.observeTrack(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val listener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) { refresh(player) }
+    }
+
+    init {
+        connection.connect()
+        viewModelScope.launch {
+            connection.controller.collect { c -> c?.addListener(listener); c?.let { refresh(it) } }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                connection.player?.let { p -> if (p.isPlaying) _state.value = _state.value.copy(positionMs = p.currentPosition.coerceAtLeast(0L)) }
+                delay(100)
+            }
+        }
+    }
+
+    private fun refresh(p: Player) {
+        val item = p.currentMediaItem
+        _state.value = PlayerUiState(
+            connected = true,
+            isPlaying = p.isPlaying,
+            playbackState = p.playbackState,
+            trackId = item?.let { MediaItems.trackId(it) },
+            title = item?.mediaMetadata?.title?.toString().orEmpty(),
+            artist = item?.mediaMetadata?.artist?.toString().orEmpty(),
+            artworkUri = item?.mediaMetadata?.artworkUri,
+            positionMs = p.currentPosition.coerceAtLeast(0L),
+            durationMs = p.duration.takeIf { it > 0 } ?: item?.let { MediaItems.durationMs(it) } ?: 0L,
+            shuffle = p.shuffleModeEnabled,
+            repeatMode = p.repeatMode,
+            queue = (0 until p.mediaItemCount).map { p.getMediaItemAt(it) },
+            queueIndex = p.currentMediaItemIndex,
+        )
+    }
+
+    fun play(tracks: List<TrackEntity>, index: Int = 0) = connection.play(tracks, index)
+    fun playNext(t: TrackEntity) = connection.playNext(t)
+    fun enqueue(ts: List<TrackEntity>) = connection.enqueue(ts)
+    fun togglePlay() { connection.player?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } } }
+    fun next() = connection.player?.seekToNext()
+    fun previous() = connection.player?.seekToPrevious()
+    fun seekTo(ms: Long) = connection.player?.seekTo(ms)
+    fun seekToQueueItem(index: Int) = connection.player?.seekTo(index, 0L)
+    fun removeQueueItem(index: Int) = connection.player?.removeMediaItem(index)
+    fun toggleShuffle() { connection.player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
+    fun cycleRepeat() {
+        connection.player?.let {
+            it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
+        }
+    }
+    fun blendNow() = graph.player.player.blendNow()
+    fun setScrubberMode(mode: ScrubberMode) = viewModelScope.launch { graph.settings.setScrubberMode(mode) }
+
+    private val spectroCache = HashMap<Long, SpectrogramImage?>()
+    /** Loads a track's static spectrogram (requesting analysis if it does not exist yet). */
+    suspend fun spectrogram(trackId: Long): SpectrogramImage? {
+        spectroCache[trackId]?.let { return it }
+        val t = graph.library.track(trackId) ?: return null
+        val path = t.spectrogramPath
+        if (path == null) { graph.analysis.request(trackId, urgent = true); return null }
+        val img = withContext(Dispatchers.IO) { graph.analysis.store.load(path) }
+        if (spectroCache.size > 8) spectroCache.clear()
+        spectroCache[trackId] = img
+        return img
+    }
+
+    override fun onCleared() { connection.player?.removeListener(listener); connection.disconnect() }
+}
+
+// ---------------------------------------------------------------------------
+
+class DownloadViewModel(private val graph: Graph) : ViewModel() {
+    val jobs: StateFlow<List<DownloadJobEntity>> = graph.downloads.jobs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val settings: StateFlow<DownloadSettings> = graph.settings.download.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadSettings(DownloadBackend.TERMUX, "", "mp3"))
+    val termux = TermuxDownloader(graph.app)
+
+    fun enqueue(source: String) = graph.downloads.enqueue(source)
+    fun retry(id: Long) = graph.downloads.retry(id)
+    fun clearFinished() = graph.downloads.clearFinished()
+    fun setBackend(b: DownloadBackend) = viewModelScope.launch { graph.settings.setDownloadBackend(b) }
+    fun setCompanionUrl(url: String) = viewModelScope.launch { graph.settings.setCompanionUrl(url) }
+    fun setFormat(f: String) = viewModelScope.launch { graph.settings.setDownloadFormat(f) }
+    fun rescanFolder() = viewModelScope.launch { graph.downloads.scanDownloadFolder(); graph.library.rescan() }
+    suspend fun pingCompanion(): Result<String> = CompanionDownloader(graph.app, settings.value.companionUrl, settings.value.format).ping()
+}
+
+// ---------------------------------------------------------------------------
+
+data class ShareUiState(
+    val serverUrl: String? = null,
+    val payload: String? = null,
+    val qr: Bitmap? = null,
+    val includeFile: Boolean = true,
+    val includeApk: Boolean = true,
+    val error: String? = null,
+)
+
+class ShareViewModel(private val graph: Graph) : ViewModel() {
+    private val _state = MutableStateFlow(ShareUiState())
+    val state: StateFlow<ShareUiState> = _state
+    private var trackId: Long? = null
+
+    fun startSharing(trackId: Long) {
+        this.trackId = trackId
+        viewModelScope.launch {
+            val port = graph.settings.sharePort.first()
+            val url = withContext(Dispatchers.IO) { graph.shareServer.start(port) }
+            graph.shareServer.offer(trackId)
+            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address: only the link can be shared" else null)
+            rebuild()
+        }
+    }
+
+    fun setIncludeFile(v: Boolean) { _state.value = _state.value.copy(includeFile = v); rebuild() }
+    fun setIncludeApk(v: Boolean) { _state.value = _state.value.copy(includeApk = v); rebuild() }
+
+    private fun rebuild() {
+        val id = trackId ?: return
+        viewModelScope.launch {
+            val t = graph.library.track(id) ?: return@launch
+            val genres = graph.library.genresOf(id)
+            val s = _state.value
+            val payload = SharePayload(
+                title = t.title, artist = t.artist, link = t.sourceLink,
+                fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
+                apkUrl = if (s.includeApk) graph.shareServer.apkUrl() else null,
+                genres = genres, bpm = t.bpm,
+            ).encode()
+            val qr = withContext(Dispatchers.Default) { QrCodes.encode(payload, 720, AColor.BLACK, AColor.WHITE) }
+            dev.cued.app.share.nfc.SharePayloadHolder.set(payload)
+            _state.value = _state.value.copy(payload = payload, qr = qr)
+        }
+    }
+
+    fun stopSharing() {
+        dev.cued.app.share.nfc.SharePayloadHolder.set(null)
+        graph.shareServer.stop()
+        _state.value = ShareUiState()
+    }
+
+    /** Receiving side: turn a scanned/tapped payload into a download or a saved link. */
+    fun receive(payload: SharePayload): String {
+        val source = payload.fileUrl ?: payload.link ?: return "Nothing downloadable in this share"
+        if (payload.fileUrl != null) {
+            viewModelScope.launch { LocalFileReceiver(graph).fetch(payload) }
+            return "Fetching ${payload.title} from the other phone…"
+        }
+        graph.downloads.enqueue(source, payload.title, payload.artist)
+        return "Queued ${payload.title} for download"
+    }
+
+    override fun onCleared() { stopSharing() }
+}
+
+/** Pulls a track file from another phone's share server straight into Music/CUEd. */
+class LocalFileReceiver(private val graph: Graph) {
+    suspend fun fetch(payload: SharePayload) = withContext(Dispatchers.IO) {
+        val url = payload.fileUrl ?: return@withContext
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 8_000; conn.readTimeout = 120_000
+        try {
+            if (conn.responseCode !in 200..299) return@withContext
+            val mime = conn.contentType?.substringBefore(';') ?: "audio/mpeg"
+            val ext = when (mime) { "audio/mp4" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg" -> "ogg"; else -> "mp3" }
+            val name = "${payload.artist} - ${payload.title}.$ext".replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val (uri, id) = dev.cued.app.download.DownloadManager.createPendingAudio(graph.app, name, mime)
+            graph.app.contentResolver.openOutputStream(uri)!!.use { out -> conn.inputStream.use { it.copyTo(out) } }
+            dev.cued.app.download.DownloadManager.finishPending(graph.app, uri)
+            graph.library.rescan()
+            graph.db.tracks().byMediaStoreId(id)?.let { t ->
+                payload.link?.let { graph.library.setSourceLink(t.id, it) }
+                if (payload.genres.isNotEmpty()) graph.library.setGenres(t.id, payload.genres)
+                graph.analysis.request(t.id)
+            }
+        } finally { conn.disconnect() }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+class SettingsViewModel(private val graph: Graph) : ViewModel() {
+    val playback: StateFlow<PlaybackSettings> = graph.settings.playback.stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackSettings(6_000L, CrossfadeCurve.EQUAL_POWER, true, 8f, 0.25f))
+    val ui: StateFlow<UiSettings> = graph.settings.ui.stateIn(viewModelScope, SharingStarted.Eagerly, UiSettings(ScrubberMode.REACTIVE_SPECTROGRAM, 120, 48))
+    val sharePort: StateFlow<Int> = graph.settings.sharePort.stateIn(viewModelScope, SharingStarted.Eagerly, 8765)
+    val analysisPending: StateFlow<Int> = graph.analysis.pending
+
+    fun setCrossfadeMs(ms: Long) = viewModelScope.launch { graph.settings.setCrossfadeMs(ms) }
+    fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
+    fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
+    fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }
+    fun setMinConfidence(v: Float) = viewModelScope.launch { graph.settings.setMinBpmConfidence(v) }
+    fun setScrubberMode(m: ScrubberMode) = viewModelScope.launch { graph.settings.setScrubberMode(m) }
+    fun setVisualDelay(ms: Int) = viewModelScope.launch { graph.settings.setVisualDelayMs(ms) }
+    fun setSharePort(p: Int) = viewModelScope.launch { graph.settings.setSharePort(p) }
+    fun analyseAll() = graph.analysis.sweep()
+    fun rescan() = graph.library.rescanAsync()
+}
