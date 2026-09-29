@@ -113,8 +113,8 @@ class CrossfadePlayer(
             player.playWhenReady = false
         }
 
-        fun setGain(g: Float) { gain = g; player.volume = (g * masterVolume).coerceIn(0f, 1f); spectrumBus.setGain(index, g) }
-        fun setSpeed(s: Float) {
+        fun applyGain(g: Float) { gain = g; player.volume = (g * masterVolume).coerceIn(0f, 1f); spectrumBus.applyGain(index, g) }
+        fun applySpeed(s: Float) {
             if (kotlin.math.abs(speed - s) < 0.0005f) return
             speed = s
             player.playbackParameters = PlaybackParameters(s, 1f)
@@ -123,8 +123,8 @@ class CrossfadePlayer(
             player.stop()
             player.clearMediaItems()
             item = null
-            setSpeed(1f)
-            setGain(1f)
+            applySpeed(1f)
+            applyGain(1f)
         }
     }
 
@@ -169,7 +169,7 @@ class CrossfadePlayer(
     }
     private var resumeOnFocusGain = false
     private var duck = 1f
-    private fun masterDuck(level: Float) { duck = level; decks.forEach { it.setGain(it.gain) } }
+    private fun masterDuck(level: Float) { duck = level; decks.forEach { it.applyGain(it.gain) } }
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
@@ -307,7 +307,7 @@ class CrossfadePlayer(
 
     override fun handleSetVolume(volume: Float): ListenableFuture<*> {
         masterVolume = volume.coerceIn(0f, 1f)
-        decks.forEach { it.setGain(it.gain) }
+        decks.forEach { it.applyGain(it.gain) }
         return DONE
     }
 
@@ -413,7 +413,7 @@ class CrossfadePlayer(
             active.player.playWhenReady = playWhenReady
             lastError = null
         } else {
-            active.setSpeed(1f); active.setGain(1f)
+            active.applySpeed(1f); active.applyGain(1f)
             if (active.player.playbackState == Player.STATE_IDLE && prepared) active.player.prepare()
             active.player.seekTo(pos)
         }
@@ -535,8 +535,8 @@ class CrossfadePlayer(
         val incoming = other
         val outgoing = active
         incoming.stopAndClear()
-        incoming.setGain(0f)
-        incoming.setSpeed(plan.tempo.incomingStartSpeed)
+        incoming.applyGain(0f)
+        incoming.applySpeed(plan.tempo.incomingStartSpeed)
         incoming.load(playlist[nextIdx], plan.incomingStartMs)
         incoming.player.prepare()
         incoming.player.playWhenReady = playWhenReady
@@ -549,11 +549,11 @@ class CrossfadePlayer(
         val outPos = t.outgoing.player.currentPosition.let { if (it == C.TIME_UNSET) t.plan.startAtOutgoingMs else it }
         val progress = if (t.plan.durationMs <= 0) 1f else ((outPos - t.plan.startAtOutgoingMs).toFloat() / t.plan.durationMs).coerceIn(0f, 1f)
         val g = Crossfade.gains(progress, t.plan.curve)
-        t.outgoing.setGain(g.outgoing)
-        t.incoming.setGain(g.incoming)
+        t.outgoing.applyGain(g.outgoing)
+        t.incoming.applyGain(g.incoming)
         val (outSpeed, inSpeed) = Crossfade.speeds(progress, t.plan.tempo)
-        t.outgoing.setSpeed(outSpeed)
-        t.incoming.setSpeed(inSpeed)
+        t.outgoing.applySpeed(outSpeed)
+        t.incoming.applySpeed(inSpeed)
         _transitionInfo.value = TransitionInfo(progress, t.plan, t.outgoingBpm, t.incomingBpm)
         if (!t.midpointDone && progress >= 0.5f) {
             t.midpointDone = true
@@ -574,8 +574,8 @@ class CrossfadePlayer(
             t.outgoing.item?.let { onTrackFinished(it.mediaId, 1f) }
         }
         t.outgoing.stopAndClear()
-        t.incoming.setGain(1f)
-        t.incoming.setSpeed(1f)
+        t.incoming.applyGain(1f)
+        t.incoming.applySpeed(1f)
         transition = null
         _transitionInfo.value = null
         armedForIndex = -1; armedPlan = null
@@ -589,8 +589,8 @@ class CrossfadePlayer(
             t.outgoing.stopAndClear()
         } else {
             t.incoming.stopAndClear()
-            t.outgoing.setGain(1f)
-            t.outgoing.setSpeed(1f)
+            t.outgoing.applyGain(1f)
+            t.outgoing.applySpeed(1f)
         }
         transition = null
         _transitionInfo.value = null
