@@ -248,7 +248,9 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
             _state.map { it.trackId }.distinctUntilChanged().collect { id ->
                 if (id == null) return@collect
                 val s = graph.settings.lyricsNow()
-                if (s.autoFetch) launch(Dispatchers.IO) { runCatching { graph.lyrics.ensure(id, allowOnline = s.fetchOnline) } }
+                // Podcasts and audiobooks: only look locally (embedded / sidecar), never online.
+                val long = graph.library.track(id)?.isLong == true
+                if (s.autoFetch) launch(Dispatchers.IO) { runCatching { graph.lyrics.ensure(id, allowOnline = s.fetchOnline && !long) } }
             }
         }
     }
@@ -367,7 +369,7 @@ class LocalFileReceiver(private val graph: Graph) {
             graph.db.tracks().byMediaStoreId(id)?.let { t ->
                 payload.link?.let { graph.library.setSourceLink(t.id, it) }
                 if (payload.genres.isNotEmpty()) graph.library.setGenres(t.id, payload.genres)
-                graph.analysis.request(t.id)
+                if (!t.isLong) graph.analysis.request(t.id)
             }
         } finally { conn.disconnect() }
     }

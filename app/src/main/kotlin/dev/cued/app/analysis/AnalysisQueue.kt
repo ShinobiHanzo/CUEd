@@ -101,6 +101,8 @@ class AnalysisQueue(
 
     private suspend fun analyse(trackId: Long): TrackEntity? = withContext(Dispatchers.Default) {
         val track = db.tracks().byId(trackId) ?: return@withContext null
+        // Podcasts and audiobooks are never mixed, so never analysed.
+        if (track.isLong) return@withContext null
         // Tempo only: decode to ~11 kHz mono, capped so long mixes stay cheap.
         var pcm = FloatArray(RATE * 60)
         var count = 0

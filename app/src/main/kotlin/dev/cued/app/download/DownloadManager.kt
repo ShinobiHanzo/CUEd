@@ -113,7 +113,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         for (msId in mediaStoreIds) {
             db.tracks().byMediaStoreId(msId)?.let { t ->
                 graph.library.setSourceLink(t.id, source)
-                graph.analysis.request(t.id)
+                if (!t.isLong) graph.analysis.request(t.id)
             }
         }
     }

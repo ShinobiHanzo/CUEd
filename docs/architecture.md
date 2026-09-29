@@ -78,6 +78,13 @@ holder persists it, and `Deck.load` starts a long item from that offset. The eng
 refuses to arm a crossfade into or out of a long item and honours a listener speed
 (`handleSetPlaybackParameters`) that resets to 1x whenever a song loads.
 
+Invariant: nothing plays or queues a long item on its own. Every automatic source
+(smart lists, genre lists, search, recommendations, voice "play something", Android Auto
+"All tracks", the podcasts folder itself) is either music-only or non-playable as a
+folder. A long item plays only when tapped on its own page, chosen from its menu, named
+by voice, or placed in a playlist by the user. Long items are also never sent for tempo
+analysis or online lyrics lookup.
+
 ## Threading
 
 - ExoPlayer and `SimpleBasePlayer` are driven on the main looper.

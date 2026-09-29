@@ -212,7 +212,7 @@ interface LyricsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(l: LyricsEntity)
 
-    @Query("SELECT t.id FROM tracks t LEFT JOIN lyrics l ON l.trackId = t.id WHERE t.missing = 0 AND (l.trackId IS NULL OR (l.source = 'none' AND l.fetchedAt < :retryBefore))")
+    @Query("SELECT t.id FROM tracks t LEFT JOIN lyrics l ON l.trackId = t.id WHERE t.missing = 0 AND t.kind = 'music' AND (l.trackId IS NULL OR (l.source = 'none' AND l.fetchedAt < :retryBefore))")
     suspend fun trackIdsWithoutLyrics(retryBefore: Long): List<Long>
 
     @Query("SELECT COUNT(*) FROM lyrics WHERE source != 'none'")

@@ -42,6 +42,13 @@ class LibraryRepository(
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning
 
+    /**
+     * Music only. Every list that can start playback or grow the queue on its own
+     * (smart lists, genres, search, recommendations, voice "play something",
+     * Android Auto "All tracks") is derived from this flow, so a podcast or
+     * audiobook can only play when you pick it directly, name it, or put it in a
+     * playlist yourself.
+     */
     val tracks: Flow<List<TrackEntity>> = db.tracks().observeAll()
     /** Podcasts, audiobooks, long mixes: anything over 12 minutes (or moved there by hand). */
     val longPlays: Flow<List<TrackEntity>> = db.tracks().observeLong()
