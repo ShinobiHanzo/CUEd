@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dev.cued.app.data.PlaybackSettings
 import dev.cued.core.mix.Crossfade
+import dev.cued.core.mix.CrossfadeCurve
 import dev.cued.core.mix.TempoMatcher
 import dev.cued.core.mix.TrackTempo
 import dev.cued.core.mix.TransitionPlan
@@ -178,7 +179,7 @@ class CrossfadePlayer(
     }
 
     init {
-        context.registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        androidx.core.content.ContextCompat.registerReceiver(context, noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     // ---- SimpleBasePlayer: state -------------------------------------------
@@ -493,7 +494,7 @@ class CrossfadePlayer(
         val t = transition
         if (t != null) { runTransition(t); return }
         val s = settings()
-        if (s.crossfadeMs <= 0L) return
+        if (!s.crossfadeEnabled && !s.tempoMatch) return
         val ap = active.player
         if (ap.playbackState != Player.STATE_READY) return
         val duration = ap.duration
@@ -522,10 +523,20 @@ class CrossfadePlayer(
             val incoming = runCatching { tempoProvider.tempo(nextId, urgent = true) }.getOrNull()
             _currentTempo.value = outgoing
             val out = outgoing?.copy(durationMs = durationMs) ?: TrackTempo(durationMs, 0f, 0f, 0f)
-            val plan = TransitionPlanner.plan(
-                outgoing = out, incoming = incoming, crossfadeMs = s.crossfadeMs, curve = s.curve,
-                tempoMatch = s.tempoMatch, minConfidence = s.minBpmConfidence, maxStretch = s.maxStretchPercent / 100f,
-            )
+            // Tempo-match is its own mode with its own duration. If it is on and the
+            // two tracks relate by a simple ratio, use it; otherwise fall back to the
+            // standard crossfade when that is on, or to a gapless cut.
+            var plan: TransitionPlan? = null
+            if (s.tempoMatch) {
+                val matched = TransitionPlanner.plan(
+                    outgoing = out, incoming = incoming, crossfadeMs = s.tempoMatchMs, curve = CrossfadeCurve.SMOOTH_STEP,
+                    tempoMatch = true, minConfidence = s.minBpmConfidence, maxStretch = s.maxStretchPercent / 100f,
+                )
+                if (matched.tempo.matched) plan = matched
+            }
+            if (plan == null && s.crossfadeEnabled) {
+                plan = TransitionPlanner.plan(outgoing = out, incoming = incoming, crossfadeMs = s.crossfadeMs, curve = s.curve, tempoMatch = false)
+            }
             armedTempos = outgoing?.bpm to incoming?.bpm
             if (armedForIndex == currentIndex) armedPlan = plan
         }
@@ -604,7 +615,7 @@ class CrossfadePlayer(
         val dur = active.player.duration.takeIf { it > 0 } ?: return
         val pos = activePositionMs()
         val plan = armedPlan?.copy(startAtOutgoingMs = pos)
-            ?: TransitionPlan(pos, 0L, s.crossfadeMs.coerceAtLeast(1_000L).coerceAtMost(dur - pos), s.curve, TempoMatcher.NONE)
+            ?: TransitionPlan(pos, 0L, (if (s.tempoMatch) s.tempoMatchMs else s.crossfadeMs).coerceAtLeast(1_000L).coerceAtMost(dur - pos), s.curve, TempoMatcher.NONE)
         beginTransition(plan, next)
         startTicking()
     }

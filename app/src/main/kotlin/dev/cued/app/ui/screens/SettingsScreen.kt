@@ -36,22 +36,27 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
     val pending by vm.analysisPending.collectAsState()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        SectionHeader("Crossfade", "How the next track blends in")
-        LabeledSlider("Duration", "${pb.crossfadeMs / 1000}s" + if (pb.crossfadeMs == 0L) " (off, gapless)" else "", pb.crossfadeMs / 1000f, 0f..20f, 19) { vm.setCrossfadeMs((it * 1000).toLong()) }
+        SectionHeader("Crossfade", "Standard volume blend between tracks")
+        ToggleRow("Crossfade", "Off = gapless cut", pb.crossfadeEnabled) { vm.setCrossfadeEnabled(it) }
+        LabeledSlider("Duration", "${pb.crossfadeMs / 1000}s", pb.crossfadeMs / 1000f, 1f..20f, 18, enabled = pb.crossfadeEnabled) { vm.setCrossfadeMs((it * 1000).toLong()) }
         Text("Curve", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelLarge)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             CrossfadeCurve.entries.forEachIndexed { i, c ->
-                SegmentedButton(selected = pb.curve == c, onClick = { vm.setCurve(c) }, shape = SegmentedButtonDefaults.itemShape(i, CrossfadeCurve.entries.size)) {
+                SegmentedButton(selected = pb.curve == c, onClick = { vm.setCurve(c) }, enabled = pb.crossfadeEnabled, shape = SegmentedButtonDefaults.itemShape(i, CrossfadeCurve.entries.size)) {
                     Text(when (c) { CrossfadeCurve.EQUAL_POWER -> "Equal power"; CrossfadeCurve.LINEAR -> "Linear"; CrossfadeCurve.SMOOTH_STEP -> "Smooth" }, maxLines = 1)
                 }
             }
         }
 
-        SectionHeader("Tempo match", "Closest-common-factor beat matching during the blend")
-        ToggleRow("Tempo-match crossfades", "Lines the incoming beat grid up with the outgoing one when their tempos relate by 1:1, 2:1, 3:2, 4:3…", pb.tempoMatch) { vm.setTempoMatch(it) }
+        SectionHeader("Tempo-match crossfade", "Separate mode: beat-aligned, speed-matched blend. Off by default.")
+        ToggleRow("Tempo-match crossfade", "Lines the incoming beat grid up with the outgoing one when their tempos relate by 1:1, 2:1, 3:2, 4:3… Needs both tracks analysed.", pb.tempoMatch) { vm.setTempoMatch(it) }
+        LabeledSlider("Blend length", "${pb.tempoMatchMs / 1000}s", pb.tempoMatchMs / 1000f, 2f..32f, 29, enabled = pb.tempoMatch) { vm.setTempoMatchMs((it * 1000).toLong()) }
         LabeledSlider("Max stretch", "±${pb.maxStretchPercent.toInt()}%", pb.maxStretchPercent, 1f..16f, 14, enabled = pb.tempoMatch) { vm.setMaxStretch(it) }
         LabeledSlider("Min BPM confidence", "${(pb.minBpmConfidence * 100).toInt()}%", pb.minBpmConfidence, 0f..0.9f, 8, enabled = pb.tempoMatch) { vm.setMinConfidence(it) }
-        Text("Beyond the max stretch the blend falls back to a plain crossfade; time-stretch artefacts get audible past ~8%.", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+        Text(
+            "When the two tracks don't share a simple tempo ratio within the max stretch, the blend falls back to the standard crossfade above (if on) or a gapless cut. Time-stretch artefacts get audible past ~8%.",
+            Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
 
         SectionHeader("Scrubber", "Song-position control style")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {

@@ -34,13 +34,22 @@ fader. `MixTest` checks that `outBpm * outSpeed == inBpm * inSpeed` at every ste
 `t = 0` of the blend is a beat on both. Bar-level alignment (downbeats) is a future
 improvement; the grid does not currently know where bar 1 is.
 
-## Knobs (Settings → Crossfade / Tempo match)
+## Two modes, independent
+
+**Standard crossfade** (on by default): plain volume blend with its own duration and curve.
+
+**Tempo-match crossfade** (off by default): its own switch and its own, usually longer,
+blend length. When it is on and the next pair of tracks relates by a simple ratio within
+the stretch limit, the beat-matched blend runs. When they don't, playback falls back to
+the standard crossfade if that is on, otherwise to a gapless cut. Both off = gapless.
 
 | Setting | Default | Effect |
 |---|---|---|
-| Duration | 6 s | Blend length; 0 = gapless, no overlap |
+| Crossfade | on | Standard blend on/off (off = gapless) |
+| Duration | 6 s | Standard blend length |
 | Curve | Equal power | `cos/sin` keeps loudness flat; Linear dips in the middle; Smooth holds then drops |
-| Tempo-match | on | Off = plain crossfade always |
+| Tempo-match crossfade | **off** | Beat-matched mode on/off |
+| Blend length | 8 s | Tempo-match blend length (uses the Smooth curve) |
 | Max stretch | 8% | Fallback threshold |
 | Min BPM confidence | 25% | Tracks whose detector confidence is below this are not matched |
 

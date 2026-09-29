@@ -47,6 +47,11 @@
         android:theme="@style/Theme.CUEd"
         tools:targetApi="34">
 
+        <!-- Android Auto: browse the library and use voice from the head unit -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -68,6 +73,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="cued" android:host="share" />
             </intent-filter>
+            <!-- "Play <x> on CUEd" from Google Assistant / system search -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <!-- Receive a Spotify / YouTube link from the share sheet to queue a download -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -81,6 +91,7 @@
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>

@@ -5,7 +5,6 @@ import androidx.media3.common.util.UnstableApi
 import dev.cued.app.Graph
 import dev.cued.app.analysis.AnalysisQueue.Companion.toTempo
 import dev.cued.app.data.PlaybackSettings
-import dev.cued.core.mix.CrossfadeCurve
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -19,7 +18,7 @@ class PlayerHolder(private val context: Context, private val graph: Graph) {
     val spectrumBus = SpectrumBus(bands = 64)
 
     @Volatile
-    private var latestSettings = PlaybackSettings(6_000L, CrossfadeCurve.EQUAL_POWER, true, 8f, 0.25f)
+    private var latestSettings = PlaybackSettings.DEFAULT
 
     init {
         graph.settings.playback.onEach { latestSettings = it }.launchIn(graph.appScope)

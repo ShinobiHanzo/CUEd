@@ -55,6 +55,11 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         when (intent.action) {
             ACTION_NOW_PLAYING -> inbound.value = Inbound.NowPlaying
+            // "Play <x> on CUEd" from Google Assistant / the Search app when the app is in the foreground.
+            android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> {
+                val q = intent.getStringExtra(android.app.SearchManager.QUERY).orEmpty()
+                inbound.value = Inbound.VoicePlay(q)
+            }
             Intent.ACTION_VIEW, android.nfc.NfcAdapter.ACTION_NDEF_DISCOVERED -> {
                 val text = intent.dataString ?: return
                 SharePayload.decode(text)?.let { inbound.value = Inbound.Share(it) }

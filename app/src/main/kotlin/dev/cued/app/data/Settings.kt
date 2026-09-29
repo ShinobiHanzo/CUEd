@@ -20,12 +20,36 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 enum class ScrubberMode { STANDARD, STATIC_SPECTROGRAM, REACTIVE_SPECTROGRAM }
 enum class DownloadBackend { TERMUX, COMPANION }
 
+/**
+ * Two independent blend modes:
+ *  - Standard crossfade: plain volume blend, on by default.
+ *  - Tempo-match crossfade: beat-aligned, speed-matched blend; off by default and
+ *    with its own duration. When it is on but the two tracks don't relate by a
+ *    simple tempo ratio, playback falls back to the standard crossfade (if that is
+ *    on) or a gapless cut.
+ */
 data class PlaybackSettings(
+    val crossfadeEnabled: Boolean,
     val crossfadeMs: Long,
     val curve: CrossfadeCurve,
     val tempoMatch: Boolean,
+    val tempoMatchMs: Long,
     val maxStretchPercent: Float,
     val minBpmConfidence: Float,
+) {
+    companion object {
+        val DEFAULT = PlaybackSettings(
+            crossfadeEnabled = true, crossfadeMs = 6_000L, curve = CrossfadeCurve.EQUAL_POWER,
+            tempoMatch = false, tempoMatchMs = 8_000L, maxStretchPercent = 8f, minBpmConfidence = 0.25f,
+        )
+    }
+}
+
+data class CarSettings(
+    /** Manual toggle from the sidebar. */
+    val carMode: Boolean,
+    /** Enter car mode by itself when Android reports the car UI mode (dock, Android Auto on older versions). */
+    val autoCarMode: Boolean,
 )
 
 data class UiSettings(
@@ -43,7 +67,11 @@ data class DownloadSettings(
 /** Everything user-tunable, persisted with DataStore. Defaults are the values a DJ-ish listener would expect. */
 class Settings(private val context: Context) {
     private object K {
+        val crossfadeEnabled = booleanPreferencesKey("crossfade_enabled")
         val crossfadeMs = longPreferencesKey("crossfade_ms")
+        val tempoMatchMs = longPreferencesKey("tempo_match_ms")
+        val carMode = booleanPreferencesKey("car_mode")
+        val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
         val tempoMatch = booleanPreferencesKey("tempo_match")
         val maxStretch = floatPreferencesKey("max_stretch_percent")
@@ -60,12 +88,18 @@ class Settings(private val context: Context) {
 
     val playback: Flow<PlaybackSettings> = context.dataStore.data.map { p ->
         PlaybackSettings(
-            crossfadeMs = p[K.crossfadeMs] ?: 6_000L,
-            curve = p[K.curve]?.let { runCatching { CrossfadeCurve.valueOf(it) }.getOrNull() } ?: CrossfadeCurve.EQUAL_POWER,
-            tempoMatch = p[K.tempoMatch] ?: true,
-            maxStretchPercent = p[K.maxStretch] ?: 8f,
-            minBpmConfidence = p[K.minConfidence] ?: 0.25f,
+            crossfadeEnabled = p[K.crossfadeEnabled] ?: PlaybackSettings.DEFAULT.crossfadeEnabled,
+            crossfadeMs = p[K.crossfadeMs] ?: PlaybackSettings.DEFAULT.crossfadeMs,
+            curve = p[K.curve]?.let { runCatching { CrossfadeCurve.valueOf(it) }.getOrNull() } ?: PlaybackSettings.DEFAULT.curve,
+            tempoMatch = p[K.tempoMatch] ?: PlaybackSettings.DEFAULT.tempoMatch,
+            tempoMatchMs = p[K.tempoMatchMs] ?: PlaybackSettings.DEFAULT.tempoMatchMs,
+            maxStretchPercent = p[K.maxStretch] ?: PlaybackSettings.DEFAULT.maxStretchPercent,
+            minBpmConfidence = p[K.minConfidence] ?: PlaybackSettings.DEFAULT.minBpmConfidence,
         )
+    }
+
+    val car: Flow<CarSettings> = context.dataStore.data.map { p ->
+        CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true)
     }
 
     val ui: Flow<UiSettings> = context.dataStore.data.map { p ->
@@ -90,7 +124,11 @@ class Settings(private val context: Context) {
     suspend fun uiNow() = ui.first()
     suspend fun downloadNow() = download.first()
 
-    suspend fun setCrossfadeMs(ms: Long) = context.dataStore.edit { it[K.crossfadeMs] = ms.coerceIn(0L, 20_000L) }
+    suspend fun setCrossfadeEnabled(on: Boolean) = context.dataStore.edit { it[K.crossfadeEnabled] = on }
+    suspend fun setCrossfadeMs(ms: Long) = context.dataStore.edit { it[K.crossfadeMs] = ms.coerceIn(1_000L, 20_000L) }
+    suspend fun setTempoMatchMs(ms: Long) = context.dataStore.edit { it[K.tempoMatchMs] = ms.coerceIn(2_000L, 32_000L) }
+    suspend fun setCarMode(on: Boolean) = context.dataStore.edit { it[K.carMode] = on }
+    suspend fun setAutoCarMode(on: Boolean) = context.dataStore.edit { it[K.autoCarMode] = on }
     suspend fun setCurve(curve: CrossfadeCurve) = context.dataStore.edit { it[K.curve] = curve.name }
     suspend fun setTempoMatch(on: Boolean) = context.dataStore.edit { it[K.tempoMatch] = on }
     suspend fun setMaxStretchPercent(v: Float) = context.dataStore.edit { it[K.maxStretch] = v.coerceIn(1f, 16f) }

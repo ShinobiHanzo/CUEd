@@ -12,8 +12,10 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 
 | Area | What it does | Where |
 |---|---|---|
-| Playback | Two ExoPlayer decks blended by a `SimpleBasePlayer`; equal-power / linear / smooth curves; 0–20 s crossfade; gapless when 0 | `app/.../playback/CrossfadePlayer.kt` |
-| Tempo-match | "Closest common factor": the incoming track is matched at 1:1, 2:1, 1:2, 3:2, 2:3, 4:3, 3:4, 3:1 or 1:3, whichever needs the least stretch; both decks glide to the incoming tempo; blend starts on a beat | `core/.../mix/TempoMatcher.kt`, `Crossfade.kt` |
+| Playback | Two ExoPlayer decks blended by a `SimpleBasePlayer`; standard crossfade with equal-power / linear / smooth curves, 1–20 s, or gapless | `app/.../playback/CrossfadePlayer.kt` |
+| Tempo-match (separate mode, off by default) | "Closest common factor": the incoming track is matched at 1:1, 2:1, 1:2, 3:2, 2:3, 4:3, 3:4, 3:1 or 1:3, whichever needs the least stretch; both decks glide to the incoming tempo; blend starts on a beat; falls back to the standard crossfade when tempos don't relate | `core/.../mix/TempoMatcher.kt`, `Crossfade.kt` |
+| Car mode | Sidebar toggle (or automatic on car UI mode): one screen of oversized controls, quick-play tiles, voice button, spoken replies. Android Auto browse tree via `MediaLibraryService` | `ui/screens/CarModeScreen.kt`, `playback/LibraryTree.kt` |
+| Voice | In-app mic, Google Assistant and Android Auto ("play <x> on CUEd"). Rule-based command parser, no model | `core/.../voice/VoiceCommands.kt`, `app/.../playback/VoiceResolver.kt` |
 | BPM detection | Onset-energy autocorrelation with a tempo prior, octave-error handling and beat-phase estimate. Runs on-device, one track at a time | `core/.../dsp/BpmDetector.kt` |
 | Spectrograph | **Static**: whole-track log-band spectrogram rendered as the scrubber. **Reactive**: live FFT tapped from ExoPlayer's audio pipeline (no mic permission). **Standard**: plain bar. Toggle on the Now Playing screen | `core/.../dsp/Spectrogram.kt`, `app/.../playback/SpectrumTapProcessor.kt`, `ui/components/PositionScrubber.kt` |
 | Library | MediaStore scan into Room; favourites; free-text genre labels (many per track); play/skip history | `app/.../data` |
@@ -40,6 +42,7 @@ CI (`.github/workflows/android.yml`) runs both and uploads a debug APK on every 
 - [Tempo-matched crossfade](docs/tempo-match.md): the maths, the knobs, the limits
 - [Downloading with spotdl](docs/downloading.md): Termux vs companion setup
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
+- [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
 
 ## Status
 

@@ -6,11 +6,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -26,6 +43,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
@@ -40,6 +59,7 @@ import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
 import dev.cued.app.ui.components.MiniPlayer
 import dev.cued.app.ui.components.TrackSheet
+import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
@@ -60,6 +80,8 @@ sealed class Inbound {
     data class Share(val payload: SharePayload) : Inbound()
     data class Download(val source: String) : Inbound()
     data object NowPlaying : Inbound()
+    /** Assistant "play <query>": empty query means "play something". */
+    data class VoicePlay(val query: String) : Inbound()
 }
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
@@ -70,7 +92,7 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
     SETTINGS("settings", "Settings", Icons.Default.Settings),
 }
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () -> Unit) {
     val factory = remember { CuedVmFactory(graph) }
@@ -94,12 +116,26 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     var sheetTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var pendingDownload by remember { mutableStateOf<String?>(null) }
 
+    val context = LocalContext.current
+    val carMode by pvm.carMode.collectAsState()
+    val carSettings by pvm.carSettings.collectAsState()
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val speaker = rememberSpeaker()
+    val voice = rememberVoiceLauncher { text ->
+        scope.launch {
+            val reply = executeVoice(text, pvm, context, setCarMode = { pvm.setCarMode(it) })
+            if (carMode) speaker.say(reply)
+            snackbar.showSnackbar(reply)
+        }
+    }
+
     val incoming by inbound.collectAsState()
     LaunchedEffect(incoming) {
         when (val i = incoming) {
             is Inbound.Share -> { snackbar.showSnackbar(svm.receive(i.payload)) }
             is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Tab.DOWNLOADS.route) { launchSingleTop = true } }
             Inbound.NowPlaying -> nav.navigate("nowplaying") { launchSingleTop = true }
+            is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
             null -> {}
         }
         if (incoming != null) onInboundHandled()
@@ -109,8 +145,58 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val more: (TrackEntity) -> Unit = { sheetTrack = it }
     val showTabs = Tab.entries.any { it.route == route }
 
+    if (carMode) {
+        CarModeScreen(
+            pvm = pvm, lvm = lvm,
+            onVoice = { voice.listen("Say: play <something>, pause, next…") },
+            onExit = { pvm.exitCarModeForNow() },
+        )
+        return
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawer,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text("CUEd", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(24.dp))
+                NavigationDrawerItem(
+                    label = { Text("Car mode") }, selected = false, icon = { Icon(Icons.Default.DirectionsCar, null) },
+                    badge = { Switch(checked = carSettings.carMode, onCheckedChange = { pvm.setCarMode(it) }) },
+                    onClick = { pvm.setCarMode(true); scope.launch { drawer.close() } },
+                )
+                NavigationDrawerItem(
+                    label = { Text("Enter car mode automatically") }, selected = false, icon = { Icon(Icons.Default.Sensors, null) },
+                    badge = { Switch(checked = carSettings.autoCarMode, onCheckedChange = { pvm.setAutoCarMode(it) }) },
+                    onClick = { pvm.setAutoCarMode(!carSettings.autoCarMode) },
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(label = { Text("Voice command") }, selected = false, icon = { Icon(Icons.Default.Mic, null) },
+                    onClick = { scope.launch { drawer.close() }; voice.listen() })
+                NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("receive") })
+                NavigationDrawerItem(label = { Text("Rescan library") }, selected = false, icon = { Icon(Icons.Default.Refresh, null) },
+                    onClick = { scope.launch { drawer.close() }; lvm.rescan() })
+                NavigationDrawerItem(label = { Text("Analyse all tracks") }, selected = false, icon = { Icon(Icons.Default.GraphicEq, null) },
+                    onClick = { scope.launch { drawer.close() }; lvm.analyseAll() })
+                NavigationDrawerItem(label = { Text("Settings") }, selected = route == Tab.SETTINGS.route, icon = { Icon(Icons.Default.Settings, null) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate(Tab.SETTINGS.route) { launchSingleTop = true } })
+                Text(
+                    "Voice: \"play some house\", \"play my gym playlist\", \"next\", \"car mode\". Also works from Google Assistant and Android Auto: \"play <x> on CUEd\".",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp),
+                )
+            }
+        },
+        gesturesEnabled = showTabs,
+    ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            if (showTabs) TopAppBar(
+                title = { Text(Tab.entries.first { it.route == route }.label) },
+                navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Menu") } },
+                actions = { IconButton(onClick = { voice.listen() }) { Icon(Icons.Default.Mic, contentDescription = "Voice command") } },
+            )
+        },
         bottomBar = {
             if (showTabs) Column {
                 MiniPlayer(player, currentTrack?.albumId, onOpen = { nav.navigate("nowplaying") }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() })
@@ -178,6 +264,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             }
         }
     }
+    } // ModalNavigationDrawer
 
     sheetTrack?.let { t ->
         val flow = remember(t.id) { lvm.track(t.id) }

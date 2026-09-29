@@ -9,6 +9,7 @@ import dev.cued.app.data.LibraryRepository
 import dev.cued.app.data.Settings
 import dev.cued.app.data.db.CuedDatabase
 import dev.cued.app.download.DownloadManager
+import dev.cued.app.playback.CarModeDetector
 import dev.cued.app.playback.PlayerHolder
 import dev.cued.app.share.ShareServer
 import kotlinx.coroutines.CoroutineScope
@@ -56,4 +57,5 @@ class Graph(val app: Application) {
     val player: PlayerHolder by lazy { PlayerHolder(app, this) }
     val downloads: DownloadManager by lazy { DownloadManager(app, this) }
     val shareServer: ShareServer by lazy { ShareServer(app, this) }
+    val carDetector: CarModeDetector by lazy { CarModeDetector(app) }
 }

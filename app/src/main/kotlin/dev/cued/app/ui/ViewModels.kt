@@ -26,6 +26,9 @@ import dev.cued.app.playback.MediaItems
 import dev.cued.app.playback.PlayerConnection
 import dev.cued.app.playback.SpectrumBus
 import dev.cued.app.playback.TransitionInfo
+import dev.cued.app.playback.VoiceResolver
+import dev.cued.core.voice.VoiceCommands
+import dev.cued.app.data.CarSettings
 import dev.cued.app.share.QrCodes
 import dev.cued.core.dsp.SpectrogramImage
 import dev.cued.core.mix.CrossfadeCurve
@@ -98,6 +101,10 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     fun removeFromPlaylist(playlistId: Long, trackId: Long) = viewModelScope.launch { lib.removeFromPlaylist(playlistId, trackId) }
     fun reorderPlaylist(playlistId: Long, ids: List<Long>) = viewModelScope.launch { lib.reorderPlaylist(playlistId, ids) }
     fun saveAsPlaylist(name: String, ids: List<Long>, then: (Long) -> Unit = {}) = viewModelScope.launch { then(lib.saveAsPlaylist(name, ids)) }
+
+    /** Plays a whole playlist; used by car mode's quick tiles. */
+    @OptIn(UnstableApi::class)
+    fun viewModelScopePlay(playlistId: Long, pvm: PlayerViewModel) = viewModelScope.launch { pvm.play(lib.playlistTracksNow(playlistId)) }
 
     suspend fun similarTo(trackId: Long) = lib.similarTo(trackId)
     suspend fun playlistsContaining(trackId: Long) = lib.playlistsContaining(trackId)
@@ -187,6 +194,34 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     }
     fun blendNow() = graph.player.player.blendNow()
     fun setScrubberMode(mode: ScrubberMode) = viewModelScope.launch { graph.settings.setScrubberMode(mode) }
+    fun togglePlayIfPaused() { connection.player?.let { if (!it.isPlaying) { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } } }
+    fun setShuffle(on: Boolean) { connection.player?.shuffleModeEnabled = on }
+    fun setRepeat(mode: Int) { connection.player?.repeatMode = mode }
+
+    // ---- Voice ----
+    private val resolver = VoiceResolver(graph.library)
+    /** Resolves a voice target against the library and plays it. */
+    suspend fun playTarget(target: VoiceCommands.Target): VoiceResolver.Resolution {
+        val r = resolver.resolve(target)
+        if (r.tracks.isNotEmpty()) play(r.tracks)
+        return r
+    }
+    suspend fun playQuery(query: String): VoiceResolver.Resolution {
+        val r = resolver.resolveQuery(query)
+        if (r.tracks.isNotEmpty()) play(r.tracks)
+        return r
+    }
+
+    // ---- Car mode ----
+    private val carOverride = MutableStateFlow<Boolean?>(null)
+    val carSettings: StateFlow<CarSettings> = graph.settings.car.stateIn(viewModelScope, SharingStarted.Eagerly, CarSettings(false, true))
+    /** Effective car mode: a session override (exit button, voice) beats the stored toggle, which beats auto-detection. */
+    val carMode: StateFlow<Boolean> = combine(carOverride, carSettings, graph.carDetector.inCar) { override, s, detected ->
+        override ?: (s.carMode || (s.autoCarMode && detected))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setCarMode(on: Boolean) { carOverride.value = null; viewModelScope.launch { graph.settings.setCarMode(on) } }
+    fun setAutoCarMode(on: Boolean) = viewModelScope.launch { graph.settings.setAutoCarMode(on) }
+    fun exitCarModeForNow() { carOverride.value = false; viewModelScope.launch { graph.settings.setCarMode(false) } }
 
     private val spectroCache = HashMap<Long, SpectrogramImage?>()
     /** Loads a track's static spectrogram (requesting analysis if it does not exist yet). */
@@ -316,12 +351,14 @@ class LocalFileReceiver(private val graph: Graph) {
 // ---------------------------------------------------------------------------
 
 class SettingsViewModel(private val graph: Graph) : ViewModel() {
-    val playback: StateFlow<PlaybackSettings> = graph.settings.playback.stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackSettings(6_000L, CrossfadeCurve.EQUAL_POWER, true, 8f, 0.25f))
+    val playback: StateFlow<PlaybackSettings> = graph.settings.playback.stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackSettings.DEFAULT)
     val ui: StateFlow<UiSettings> = graph.settings.ui.stateIn(viewModelScope, SharingStarted.Eagerly, UiSettings(ScrubberMode.REACTIVE_SPECTROGRAM, 120, 48))
     val sharePort: StateFlow<Int> = graph.settings.sharePort.stateIn(viewModelScope, SharingStarted.Eagerly, 8765)
     val analysisPending: StateFlow<Int> = graph.analysis.pending
 
+    fun setCrossfadeEnabled(on: Boolean) = viewModelScope.launch { graph.settings.setCrossfadeEnabled(on) }
     fun setCrossfadeMs(ms: Long) = viewModelScope.launch { graph.settings.setCrossfadeMs(ms) }
+    fun setTempoMatchMs(ms: Long) = viewModelScope.launch { graph.settings.setTempoMatchMs(ms) }
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }
