@@ -9,6 +9,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionError
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.ListenableFuture
 import dev.cued.app.CuedApp
@@ -75,13 +76,13 @@ class PlaybackService : MediaLibraryService() {
             override fun onGetItem(
                 session: MediaLibrarySession, browser: MediaSession.ControllerInfo, mediaId: String,
             ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
-                tree.item(mediaId)?.let { LibraryResult.ofItem(it, null) } ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+                tree.item(mediaId)?.let { LibraryResult.ofItem(it, null) } ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
             }
 
             override fun onGetChildren(
                 session: MediaLibrarySession, browser: MediaSession.ControllerInfo, parentId: String, page: Int, pageSize: Int, params: LibraryParams?,
             ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
-                val all = tree.children(parentId) ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+                val all = tree.children(parentId) ?: return@future LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
                 val from = (page * pageSize).coerceAtMost(all.size)
                 val to = (from + pageSize).coerceAtMost(all.size)
                 LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
