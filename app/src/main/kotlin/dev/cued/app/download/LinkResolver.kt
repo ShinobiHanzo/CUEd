@@ -123,7 +123,7 @@ class LinkResolver(private val userAgent: String) {
     private fun meta(html: String, prop: String): String? {
         val m = Regex("<meta[^>]+(?:property|name)=[\"']$prop[\"'][^>]+content=[\"']([^\"']*)[\"']", RegexOption.IGNORE_CASE).find(html)
             ?: Regex("<meta[^>]+content=[\"']([^\"']*)[\"'][^>]+(?:property|name)=[\"']$prop[\"']", RegexOption.IGNORE_CASE).find(html)
-        return m?.groupValues?.get(1)?.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"")?.trim()?.takeIf { it.isNotEmpty() }
+        return m?.groupValues?.get(1)?.replace("&amp;", "&")?.replace("&#39;", "'")?.replace("&quot;", "\"")?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     private fun get(url: String): String? {
