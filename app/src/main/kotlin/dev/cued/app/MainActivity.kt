@@ -62,13 +62,16 @@ class MainActivity : ComponentActivity() {
             }
             Intent.ACTION_VIEW, android.nfc.NfcAdapter.ACTION_NDEF_DISCOVERED -> {
                 val text = intent.dataString ?: return
-                SharePayload.decode(text)?.let { inbound.value = Inbound.Share(it) }
+                val payload = SharePayload.decode(text)
+                if (payload != null) inbound.value = Inbound.Share(payload)
+                else if (SourceLinks.parse(text) != null) inbound.value = Inbound.Download(text) // a music link opened with CUEd
             }
             Intent.ACTION_SEND -> {
-                val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim() ?: return
+                val text = listOfNotNull(intent.getStringExtra(Intent.EXTRA_TEXT), intent.getStringExtra(Intent.EXTRA_SUBJECT)).joinToString("\n").trim()
+                if (text.isEmpty()) return
                 val payload = text.lines().firstNotNullOfOrNull { SharePayload.decode(it.trim()) }
                 if (payload != null) inbound.value = Inbound.Share(payload)
-                else if (SourceLinks.classify(text) != SourceLinks.Kind.UNKNOWN) inbound.value = Inbound.Download(text)
+                else if (SourceLinks.parse(text) != null || SourceLinks.shareTextToQuery(text) != null) inbound.value = Inbound.Download(text)
             }
         }
     }

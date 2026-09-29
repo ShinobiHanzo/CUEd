@@ -81,6 +81,10 @@ data class DownloadSettings(
     val backend: DownloadBackend,
     val companionUrl: String,
     val format: String,
+    /** Ask spotdl to write a .lrc lyrics file beside each track (--generate-lrc). */
+    val generateLrc: Boolean,
+    /** After a download, look lyrics up inside CUEd (embedded tag → lrclib if allowed). */
+    val fetchLyricsAfter: Boolean,
 )
 
 /** Everything user-tunable, persisted with DataStore. Defaults are the values a DJ-ish listener would expect. */
@@ -107,6 +111,8 @@ class Settings(private val context: Context) {
         val backend = stringPreferencesKey("download_backend")
         val companionUrl = stringPreferencesKey("companion_url")
         val format = stringPreferencesKey("download_format")
+        val generateLrc = booleanPreferencesKey("download_generate_lrc")
+        val fetchLyricsAfter = booleanPreferencesKey("download_fetch_lyrics_after")
         val sharePort = intPreferencesKey("share_port")
         val lastScanAt = longPreferencesKey("last_scan_at")
     }
@@ -154,6 +160,8 @@ class Settings(private val context: Context) {
             backend = p[K.backend]?.let { runCatching { DownloadBackend.valueOf(it) }.getOrNull() } ?: DownloadBackend.TERMUX,
             companionUrl = p[K.companionUrl] ?: "http://192.168.1.10:8766",
             format = p[K.format] ?: "mp3",
+            generateLrc = p[K.generateLrc] ?: false,
+            fetchLyricsAfter = p[K.fetchLyricsAfter] ?: true,
         )
     }
 
@@ -181,5 +189,7 @@ class Settings(private val context: Context) {
     suspend fun setDownloadBackend(b: DownloadBackend) = context.dataStore.edit { it[K.backend] = b.name }
     suspend fun setCompanionUrl(url: String) = context.dataStore.edit { it[K.companionUrl] = url.trim().trimEnd('/') }
     suspend fun setDownloadFormat(fmt: String) = context.dataStore.edit { it[K.format] = fmt }
+    suspend fun setGenerateLrc(on: Boolean) = context.dataStore.edit { it[K.generateLrc] = on }
+    suspend fun setFetchLyricsAfter(on: Boolean) = context.dataStore.edit { it[K.fetchLyricsAfter] = on }
     suspend fun setSharePort(port: Int) = context.dataStore.edit { it[K.sharePort] = port.coerceIn(1024, 65535) }
 }

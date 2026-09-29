@@ -39,9 +39,36 @@ CUEd → Downloads → Backend → **Companion (LAN)** → enter `http://<that-m
 The server is ~150 lines, has no auth and is meant for a trusted LAN. Tunnel it
 (Tailscale, WireGuard, SSH) rather than exposing it.
 
-## Share-sheet
+## Sharing links from any platform
 
-Share a Spotify/YouTube link from any app to CUEd and it lands in the Downloads box.
+Share a link to CUEd from any music app, or open a link with CUEd, and it lands in the
+Downloads box with what was detected ("Apple Music album", "Deezer playlist"…). Share
+text that only says "Song by Artist" works too: it becomes a search.
+
+spotdl itself only reads Spotify and YouTube links, so other platforms are resolved
+first, when the job runs:
+
+| Shared | What happens |
+|---|---|
+| Spotify / YouTube / YouTube Music track, album, playlist | Straight to spotdl |
+| Apple Music, Tidal, SoundCloud, Amazon, Deezer **track or album** | song.link (Odesli, open, no key) finds the matching Spotify link; if none, the title and artist become a search |
+| **Deezer** playlist or album | Expanded track by track through Deezer's public API, one job per track |
+| Apple Music, Tidal, SoundCloud, Amazon **playlist** | Not readable without an account: the job fails with a clear message. Share a Spotify/YouTube/Deezer playlist, or the tracks one by one |
+| Bandcamp or anything else | The page's title becomes a search |
+
+## Lyrics with downloads
+
+Two checkboxes on the Downloads screen:
+
+- **Save .lrc lyrics files next to tracks**: passes `--generate-lrc` to spotdl. With the
+  companion, the `.lrc` comes back with the audio and is imported into CUEd. With
+  Termux, it sits next to the file for other players; CUEd can read it there on
+  Android 10 and older (newer Android hides non-media files from other apps).
+- **Look lyrics up in CUEd after download** (default on): embedded tag first, then
+  lrclib.net if allowed in Settings → Lyrics.
+
+spotdl also embeds lyrics into the file's tag when it finds them, and CUEd reads those
+on every Android version, so most downloads carry their words regardless.
 
 ## Source links
 

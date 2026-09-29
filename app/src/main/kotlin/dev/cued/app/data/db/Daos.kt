@@ -62,6 +62,9 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE mediaStoreId = :mediaStoreId")
     suspend fun byMediaStoreId(mediaStoreId: Long): TrackEntity?
 
+    @Query("SELECT * FROM tracks WHERE addedAt >= :since AND missing = 0")
+    suspend fun addedSince(since: Long): List<TrackEntity>
+
     @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' AND (title LIKE '%' || :q || '%' OR artist LIKE '%' || :q || '%' OR album LIKE '%' || :q || '%') ORDER BY title COLLATE NOCASE")
     fun search(q: String): Flow<List<TrackEntity>>
 

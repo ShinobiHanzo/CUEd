@@ -73,6 +73,24 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="cued" android:host="share" />
             </intent-filter>
+            <!-- Music links from streaming platforms can be opened with CUEd to download them -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="open.spotify.com" />
+                <data android:host="spotify.link" />
+                <data android:host="music.apple.com" />
+                <data android:host="www.deezer.com" />
+                <data android:host="deezer.page.link" />
+                <data android:host="tidal.com" />
+                <data android:host="listen.tidal.com" />
+                <data android:host="soundcloud.com" />
+                <data android:host="on.soundcloud.com" />
+                <data android:host="music.amazon.com" />
+                <data android:host="music.youtube.com" />
+            </intent-filter>
             <!-- "Play <x> on CUEd" from Google Assistant / system search -->
             <intent-filter>
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />

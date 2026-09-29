@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.cued.app.data.DownloadBackend
@@ -50,7 +52,15 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
     val jobs by vm.jobs.collectAsState()
     val settings by vm.settings.collectAsState()
     var source by remember { mutableStateOf("") }
-    LaunchedEffect(initialSource) { if (!initialSource.isNullOrBlank()) { source = initialSource; onSourceConsumed() } }
+    var sharedText by remember { mutableStateOf<String?>(null) }
+    // Shared text is usually "Song by Artist https://…": keep the link for the box, remember the prose as a search hint.
+    LaunchedEffect(initialSource) {
+        if (!initialSource.isNullOrBlank()) {
+            source = SourceLinks.extractUrl(initialSource) ?: SourceLinks.shareTextToQuery(initialSource) ?: initialSource.trim()
+            sharedText = initialSource
+            onSourceConsumed()
+        }
+    }
     var companionUrl by remember(settings.companionUrl) { mutableStateOf(settings.companionUrl) }
     var pingResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -63,16 +73,19 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                 placeholder = { Text("https://open.spotify.com/track/…  or  artist - title") },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                val kind = SourceLinks.classify(source)
-                Text(
-                    when (kind) {
-                        SourceLinks.Kind.SPOTIFY_TRACK -> "Spotify track"; SourceLinks.Kind.SPOTIFY_ALBUM -> "Spotify album"
-                        SourceLinks.Kind.SPOTIFY_PLAYLIST -> "Spotify playlist"; SourceLinks.Kind.YOUTUBE -> "YouTube"
-                        SourceLinks.Kind.SEARCH -> "Search query"; SourceLinks.Kind.UNKNOWN -> ""
-                    }, color = Muted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f),
-                )
-                Button(onClick = { if (source.isNotBlank()) { vm.enqueue(source); source = "" } }, enabled = source.isNotBlank()) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val link = SourceLinks.parse(source)
+                val detected = when {
+                    source.isBlank() -> ""
+                    link == null -> "Search query"
+                    link.direct -> "${link.label} · spotdl reads this directly"
+                    link.platform == SourceLinks.Platform.DEEZER && (link.type == SourceLinks.LinkType.PLAYLIST || link.type == SourceLinks.LinkType.ALBUM) -> "${link.label} · will be expanded track by track"
+                    link.type == SourceLinks.LinkType.PLAYLIST -> "${link.label} · not readable without an account; share a Spotify/YouTube/Deezer playlist or the tracks individually"
+                    link.type == SourceLinks.LinkType.ARTIST -> "${link.label} · share an album, track or playlist instead"
+                    else -> "${link.label} · will be matched via song.link"
+                }
+                Text(detected, color = if (link != null && !link.direct && link.type == SourceLinks.LinkType.PLAYLIST && link.platform != SourceLinks.Platform.DEEZER) MaterialTheme.colorScheme.error else Muted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                Button(onClick = { if (source.isNotBlank()) { vm.enqueueShared(sharedText?.takeIf { SourceLinks.extractUrl(it) == source } ?: source); source = ""; sharedText = null } }, enabled = source.isNotBlank()) {
                     Icon(Icons.Default.Download, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Queue")
                 }
             }
@@ -107,6 +120,15 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                 listOf("mp3", "m4a", "opus", "flac").forEach { f ->
                     TextButton(onClick = { vm.setFormat(f) }) { Text(f, color = if (settings.format == f) Teal else Muted) }
                 }
+            }
+            SectionHeader("Lyrics with downloads")
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = settings.generateLrc, onCheckedChange = { vm.setGenerateLrc(it) })
+                Column { Text("Save .lrc lyrics files next to tracks"); Text("spotdl --generate-lrc. Companion: imported into CUEd too. Termux: readable by other players; CUEd reads them on Android 10 and older.", style = MaterialTheme.typography.bodySmall, color = Muted) }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = settings.fetchLyricsAfter, onCheckedChange = { vm.setFetchLyricsAfter(it) })
+                Column { Text("Look lyrics up in CUEd after download"); Text("Embedded tag first, then lrclib.net if allowed in Settings → Lyrics.", style = MaterialTheme.typography.bodySmall, color = Muted) }
             }
         }
         item {

@@ -32,15 +32,22 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     private val db get() = graph.db
     private val mutex = Mutex()
     private var pump: Job? = null
+    private val resolver = LinkResolver("CUEd/${dev.cued.app.BuildConfig.VERSION_NAME} (https://github.com/ShinobiHanzo/CUEd)")
 
     val jobs: Flow<List<DownloadJobEntity>> = db.downloads().observeAll()
 
+    /**
+     * [source] may be a link from any platform, a search, or raw share-sheet text.
+     * Links are resolved to something spotdl understands when the job runs.
+     */
     fun enqueue(source: String, title: String? = null, artist: String? = null) {
-        val cleaned = SourceLinks.canonical(source)
+        val url = SourceLinks.extractUrl(source)
+        val cleaned = SourceLinks.canonical(url ?: source.trim())
+        val hint = title ?: SourceLinks.shareTextToQuery(source)
         graph.appScope.launch {
             val backend = graph.settings.downloadNow().backend
             db.downloads().insert(
-                DownloadJobEntity(source = cleaned, title = title, artist = artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis())
+                DownloadJobEntity(source = cleaned, title = hint, artist = artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis())
             )
             pump()
         }
@@ -70,11 +77,36 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             val job = db.downloads().pending().firstOrNull { it.status == STATUS_QUEUED } ?: return
             val settings = graph.settings.downloadNow()
             val backend = runCatching { DownloadBackend.valueOf(job.backend) }.getOrDefault(settings.backend)
-            db.downloads().update(job.copy(status = STATUS_RUNNING))
+            db.downloads().update(job.copy(status = STATUS_RUNNING, message = "Resolving link…"))
+
+            // 1. Turn whatever was shared into something spotdl can take.
+            val resolved = runCatching { resolver.resolve(job.source, job.title) }
+                .getOrElse { LinkResolver.Result.Unsupported("Couldn't resolve the link: ${it.message}") }
+            val source = when (resolved) {
+                is LinkResolver.Result.Unsupported -> {
+                    db.downloads().update(job.copy(status = STATUS_FAILED, message = resolved.reason, finishedAt = System.currentTimeMillis()))
+                    continue
+                }
+                is LinkResolver.Result.Expanded -> {
+                    // A playlist/album from a platform spotdl can't read: one job per track.
+                    for (item in resolved.items) {
+                        db.downloads().insert(
+                            DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis())
+                        )
+                    }
+                    db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = resolved.note, finishedAt = System.currentTimeMillis()))
+                    continue
+                }
+                is LinkResolver.Result.Direct -> resolved.source
+            }
+            val note = (resolved as LinkResolver.Result.Direct).note
+            db.downloads().update(job.copy(status = STATUS_RUNNING, message = note ?: "Downloading…"))
+
+            // 2. Run it.
             val result = runCatching {
                 when (backend) {
-                    DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, settings.format)
-                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job) { p ->
+                    DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
+                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc) { p ->
                         graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
                     }
                 }
@@ -87,7 +119,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                     is Outcome.Handed -> db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) }
                     is Outcome.Done -> {
                         db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_DONE, progress = 1f, message = outcome.summary, finishedAt = System.currentTimeMillis())) }
-                        afterFilesArrived(outcome.mediaStoreIds, job.source)
+                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase)
                     }
                 }
             }
@@ -101,19 +133,35 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             db.downloads().update(j.copy(status = if (ok) STATUS_DONE else STATUS_FAILED, progress = if (ok) 1f else j.progress, message = message, finishedAt = System.currentTimeMillis()))
             if (ok) {
                 scanDownloadFolder()
-                afterFilesArrived(emptyList(), j.source)
+                afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap())
             }
             pump()
         }
     }
 
-    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String) {
+    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>) {
         graph.library.rescan()
-        // Remember where each new file came from so the track can be re-shared as a link.
-        for (msId in mediaStoreIds) {
-            db.tracks().byMediaStoreId(msId)?.let { t ->
-                graph.library.setSourceLink(t.id, source)
-                if (!t.isLong) graph.analysis.request(t.id)
+        // Which tracks are new? Companion tells us the MediaStore ids; Termux doesn't, so fall back to "added since the job started".
+        val tracks = if (mediaStoreIds.isNotEmpty()) mediaStoreIds.mapNotNull { db.tracks().byMediaStoreId(it) }
+        else db.tracks().addedSince(since - 60_000L)
+        val ds = graph.settings.downloadNow()
+        val ls = graph.settings.lyricsNow()
+        for (t in tracks) {
+            if (t.sourceLink == null && source.startsWith("http")) graph.library.setSourceLink(t.id, source)
+            if (!t.isLong) graph.analysis.request(t.id)
+            // .lrc that came back from the companion, matched by file base name.
+            val base = t.path?.let { java.io.File(it).nameWithoutExtension }
+            val lrc = base?.let { lrcByBase[it] }
+            if (lrc != null) {
+                val synced = dev.cued.core.lyrics.Lrc.isSynced(lrc)
+                db.lyrics().upsert(
+                    dev.cued.app.data.db.LyricsEntity(
+                        t.id, if (synced) dev.cued.core.lyrics.Lrc.toPlain(dev.cued.core.lyrics.Lrc.parse(lrc)) else lrc,
+                        if (synced) lrc else null, dev.cued.app.lyrics.LyricsRepository.SOURCE_SIDECAR, System.currentTimeMillis(),
+                    )
+                )
+            } else if (ds.fetchLyricsAfter && !t.isLong) {
+                graph.appScope.launch { runCatching { graph.lyrics.ensure(t.id, allowOnline = ls.fetchOnline) } }
             }
         }
     }
@@ -130,7 +178,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     sealed class Outcome {
         /** Termux took the command; a broadcast will tell us when it is done. */
         data object Handed : Outcome()
-        data class Done(val mediaStoreIds: List<Long>, val summary: String) : Outcome()
+        data class Done(val mediaStoreIds: List<Long>, val summary: String, val lrcByBase: Map<String, String> = emptyMap()) : Outcome()
     }
 
     companion object {

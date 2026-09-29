@@ -13,7 +13,7 @@ Usage:
 
 API (JSON):
     GET  /health               -> "ok"
-    POST /jobs {url, format}   -> {"id": "..."}
+    POST /jobs {url, format, lrc}   -> {"id": "..."}   (lrc: also write .lrc lyrics files)
     GET  /jobs/<id>            -> {"status": "queued|running|done|failed", "progress": 0..1, "message": "...", "files": [...]}
     GET  /files/<name>         -> the audio file
 
@@ -38,6 +38,8 @@ LOCK = threading.Lock()
 QUEUE = []
 DOWNLOAD_DIR = os.path.abspath("downloads")
 AUDIO_EXT = {".mp3", ".m4a", ".opus", ".ogg", ".flac", ".wav"}
+TEXT_EXT = {".lrc"}
+SERVE_EXT = AUDIO_EXT | TEXT_EXT
 
 
 def log(*a):
@@ -45,7 +47,7 @@ def log(*a):
 
 
 def snapshot(directory):
-    return {f for f in os.listdir(directory) if os.path.splitext(f)[1].lower() in AUDIO_EXT}
+    return {f for f in os.listdir(directory) if os.path.splitext(f)[1].lower() in SERVE_EXT}
 
 
 def run_job(job_id):
@@ -60,6 +62,8 @@ def run_job(job_id):
         "--overwrite", "skip",
         "--simple-tui",
     ]
+    if job.get("lrc"):
+        cmd.append("--generate-lrc")
     log("running:", " ".join(cmd))
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -122,9 +126,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/files/"):
             name = os.path.basename(path[len("/files/"):])
             full = os.path.join(DOWNLOAD_DIR, name)
-            if not os.path.isfile(full) or os.path.splitext(name)[1].lower() not in AUDIO_EXT:
+            if not os.path.isfile(full) or os.path.splitext(name)[1].lower() not in SERVE_EXT:
                 return self._json(404, {"error": "no such file"})
-            mime = {".m4a": "audio/mp4", ".opus": "audio/ogg", ".ogg": "audio/ogg", ".flac": "audio/flac", ".wav": "audio/wav"}.get(os.path.splitext(name)[1].lower(), "audio/mpeg")
+            mime = {".m4a": "audio/mp4", ".opus": "audio/ogg", ".ogg": "audio/ogg", ".flac": "audio/flac", ".wav": "audio/wav", ".lrc": "text/plain; charset=utf-8"}.get(os.path.splitext(name)[1].lower(), "audio/mpeg")
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(os.path.getsize(full)))
@@ -150,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
         if fmt not in {"mp3", "m4a", "opus", "flac", "ogg", "wav"}:
             fmt = "mp3"
         job_id = uuid.uuid4().hex[:12]
-        JOBS[job_id] = {"url": url, "format": fmt, "status": "queued", "progress": 0.0, "message": "queued", "files": []}
+        JOBS[job_id] = {"url": url, "format": fmt, "lrc": bool(req.get("lrc", False)), "status": "queued", "progress": 0.0, "message": "queued", "files": []}
         with LOCK:
             QUEUE.append(job_id)
         log("queued", job_id, url)

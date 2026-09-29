@@ -24,16 +24,16 @@ class TermuxDownloader(private val context: Context) {
     fun hasPermission(): Boolean =
         context.checkSelfPermission(RUN_COMMAND_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
-    fun start(job: DownloadJobEntity, format: String): DownloadManager.Outcome {
+    fun start(job: DownloadJobEntity, source: String, format: String, generateLrc: Boolean): DownloadManager.Outcome {
         check(isTermuxInstalled()) { "Termux is not installed" }
         check(hasPermission()) { "Grant CUEd the 'Run commands in Termux' permission" }
         val outDir = DownloadManager.downloadDir().absolutePath
-        val args = arrayOf(
-            "download", job.source,
+        val args = arrayListOf(
+            "download", source,
             "--output", "$outDir/{artists} - {title}.{output-ext}",
             "--format", format,
             "--overwrite", "skip",
-        )
+        ).apply { if (generateLrc) add("--generate-lrc") }.toTypedArray()
         val resultIntent = Intent(context, TermuxResultReceiver::class.java)
             .setAction(TermuxResultReceiver.ACTION_RESULT)
             .putExtra(TermuxResultReceiver.EXTRA_JOB_ID, job.id)

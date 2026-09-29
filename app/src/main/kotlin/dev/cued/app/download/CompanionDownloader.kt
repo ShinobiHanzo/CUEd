@@ -22,12 +22,12 @@ import java.net.URLEncoder
 class CompanionDownloader(private val context: Context, private val baseUrl: String, private val format: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Serializable private data class JobRequest(val url: String, val format: String)
+    @Serializable private data class JobRequest(val url: String, val format: String, val lrc: Boolean = false)
     @Serializable private data class JobCreated(val id: String)
     @Serializable private data class JobStatus(val status: String, val progress: Float = 0f, val message: String? = null, val files: List<String> = emptyList())
 
-    suspend fun run(job: DownloadJobEntity, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
-        val created = json.decodeFromString<JobCreated>(post("$baseUrl/jobs", json.encodeToString(JobRequest(job.source, format))))
+    suspend fun run(job: DownloadJobEntity, source: String, generateLrc: Boolean, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
+        val created = json.decodeFromString<JobCreated>(post("$baseUrl/jobs", json.encodeToString(JobRequest(source, format, generateLrc))))
         var status: JobStatus
         while (true) {
             delay(2_000)
@@ -37,7 +37,14 @@ class CompanionDownloader(private val context: Context, private val baseUrl: Str
             if (status.status == "failed") error(status.message ?: "spotdl failed on the companion")
         }
         val ids = ArrayList<Long>()
-        status.files.forEachIndexed { i, name ->
+        val lrcByBase = HashMap<String, String>()
+        val audioFiles = status.files.filter { !it.endsWith(".lrc", true) && !it.endsWith(".txt", true) }
+        // Lyrics files come over as text and go straight into the lyrics table for the matching track.
+        for (name in status.files.filter { it.endsWith(".lrc", true) }) {
+            runCatching { get("$baseUrl/files/${URLEncoder.encode(name, "UTF-8").replace("+", "%20")}") }.getOrNull()
+                ?.takeIf { it.isNotBlank() }?.let { lrcByBase[name.substringBeforeLast('.')] = it }
+        }
+        audioFiles.forEachIndexed { i, name ->
             val mime = when (name.substringAfterLast('.', "").lowercase()) {
                 "m4a" -> "audio/mp4"; "opus", "ogg" -> "audio/ogg"; "flac" -> "audio/flac"; else -> "audio/mpeg"
             }
@@ -53,9 +60,9 @@ class CompanionDownloader(private val context: Context, private val baseUrl: Str
             } finally { conn.disconnect() }
             DownloadManager.finishPending(context, uri)
             ids += id
-            onProgress(0.9f + 0.1f * (i + 1) / status.files.size)
+            onProgress(0.9f + 0.1f * (i + 1) / audioFiles.size)
         }
-        DownloadManager.Outcome.Done(ids, "${status.files.size} file(s) from companion")
+        DownloadManager.Outcome.Done(ids, "${audioFiles.size} file(s) from companion", lrcByBase)
     }
 
     /** Quick reachability probe for the settings screen. */
