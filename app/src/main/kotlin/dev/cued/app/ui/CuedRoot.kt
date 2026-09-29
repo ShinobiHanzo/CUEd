@@ -221,7 +221,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         Box(Modifier.fillMaxSize().padding(pad)) {
             NavHost(nav, startDestination = Tab.HOME.route) {
                 composable(Tab.HOME.route) {
-                    HomeScreen(lvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more)
+                    val upd by setvm.update.collectAsState()
+                    HomeScreen(
+                        lvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
+                        updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version,
+                        onUpdate = { nav.navigate(Tab.SETTINGS.route) { launchSingleTop = true } },
+                    )
                 }
                 composable(Tab.LIBRARY.route) {
                     LibraryScreen(lvm, player.trackId, onPlay = play, onTrackMore = more, onOpenGenre = { nav.navigate("genre/${URLEncoder.encode(it, "UTF-8")}") })

@@ -36,6 +36,8 @@ import dev.cued.app.lyrics.LyricsRepository
 import dev.cued.app.data.LyricsSettings
 import dev.cued.app.data.GenreSettings
 import dev.cued.app.genre.GenreRepository
+import dev.cued.app.update.UpdateManager
+import dev.cued.app.data.UpdateSettings
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import dev.cued.core.mix.CrossfadeCurve
@@ -413,6 +415,19 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun tidyGenres() = graph.genres.tidyLabelsAsync()
     fun lookupGenresOnline() = graph.genres.lookupOnlineAsync()
     fun cancelGenres() = graph.genres.cancel()
+
+    // ---- Updates ----
+    val update: StateFlow<UpdateManager.State> = graph.updates.state
+    val updateSettings: StateFlow<UpdateSettings> = graph.settings.updates.stateIn(viewModelScope, SharingStarted.Eagerly, UpdateSettings(true, 0L, null))
+    val currentVersion: String get() = graph.updates.currentVersion
+    fun checkForUpdate() = graph.updates.checkAsync()
+    fun downloadUpdate() = graph.updates.downloadAsync()
+    fun dismissUpdate() = graph.updates.dismiss()
+    fun canInstall() = graph.updates.canInstall()
+    fun unknownSourcesIntent() = graph.updates.unknownSourcesIntent()
+    fun installIntent(file: java.io.File) = graph.updates.installIntent(file)
+    fun setUpdatesAuto(on: Boolean) = viewModelScope.launch { graph.settings.setUpdatesAuto(on) }
+    fun setGithubToken(t: String?) = viewModelScope.launch { graph.settings.setGithubToken(t) }
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }

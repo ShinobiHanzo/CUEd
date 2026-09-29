@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         requestPermissionsIfNeeded()
         if (hasAudioPermission()) graph.library.rescanAsync()
+        graph.updates.autoCheckIfDue()
         setContent {
             CuedTheme {
                 CompositionLocalProvider(LocalGraph provides graph) {

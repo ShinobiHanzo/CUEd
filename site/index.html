@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CUEd · offline music player for Android</title>
+<meta name="description" content="CUEd: an offline-first Android music player with tempo-matched crossfade, live spectrograph, lyrics, spotdl downloads, QR/NFC sharing, car mode and voice control. No accounts, no cloud, no AI.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root { --ink:#0e0f13; --ink2:#16181f; --ink3:#222530; --mist:#e8eaf0; --muted:#8a90a3; --teal:#5ef2c6; --amber:#ffb86b; }
+  * { box-sizing:border-box }
+  html { scroll-behavior:smooth; scroll-padding-top:64px }
+  body { margin:0; background:var(--ink); color:var(--mist); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif }
+  a { color:var(--teal) }
+  nav { position:sticky; top:0; z-index:5; background:rgba(14,15,19,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink3) }
+  nav .in { max-width:900px; margin:0 auto; padding:10px 16px; display:flex; gap:14px; align-items:center; overflow-x:auto; white-space:nowrap }
+  nav .brand { font-weight:700; color:var(--mist); text-decoration:none; margin-right:6px }
+  nav a.l { color:var(--muted); text-decoration:none; font-size:14px } nav a.l:hover { color:var(--teal) }
+  main { max-width:900px; margin:0 auto; padding:0 16px 80px }
+  .hero { display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; padding:40px 0 24px }
+  @media (max-width:640px) { .hero { grid-template-columns:1fr } .qr { justify-self:start } }
+  h1 { font-size:40px; margin:0 0 6px; letter-spacing:-.5px } h1 small { color:var(--muted); font-size:16px; font-weight:400; margin-left:8px }
+  .tag { color:var(--muted); font-size:18px; margin:0 0 18px }
+  .btn { display:inline-block; background:var(--teal); color:var(--ink); font-weight:700; padding:12px 20px; border-radius:12px; text-decoration:none }
+  .btn.alt { background:var(--ink3); color:var(--mist); font-weight:500 }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .qr { background:#fff; padding:10px; border-radius:14px; width:180px; height:180px } .qr svg { width:100%; height:100% }
+  .ver { color:var(--muted); font-size:14px; margin-top:10px }
+  section { border-top:1px solid var(--ink3); padding:28px 0 }
+  h2 { font-size:22px; margin:0 0 8px } h3 { font-size:16px; margin:18px 0 4px; color:var(--teal) }
+  p, li { color:#cfd3dd } ul { padding-left:20px } li { margin:4px 0 }
+  code { background:var(--ink3); padding:1px 6px; border-radius:6px; font-size:14px }
+  pre { background:var(--ink2); border:1px solid var(--ink3); padding:12px; border-radius:10px; overflow:auto; font-size:13px }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px }
+  .card { background:var(--ink2); border:1px solid var(--ink3); border-radius:14px; padding:14px } .card b { display:block; margin-bottom:4px }
+  table { border-collapse:collapse; width:100%; font-size:15px } td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--ink3); vertical-align:top } th { color:var(--muted); font-weight:500 }
+  .note { border-left:3px solid var(--amber); padding:6px 12px; color:#cfd3dd; background:var(--ink2); border-radius:0 10px 10px 0 }
+  footer { color:var(--muted); font-size:13px; padding:20px 0 }
+</style>
+</head>
+<body>
+<nav><div class="in">
+  <a class="brand" href="#top">CUEd</a>
+  <a class="l" href="#get">Get it</a>
+  <a class="l" href="#play">Playing</a>
+  <a class="l" href="#library">Library</a>
+  <a class="l" href="#download">Downloads</a>
+  <a class="l" href="#lyrics">Lyrics</a>
+  <a class="l" href="#share">Sharing</a>
+  <a class="l" href="#car">Car &amp; voice</a>
+  <a class="l" href="#podcasts">Podcasts</a>
+  <a class="l" href="#privacy">Privacy</a>
+  <a class="l" href="https://github.com/ShinobiHanzo/CUEd">Source</a>
+</div></nav>
+
+<main id="top">
+  <div class="hero">
+    <div>
+      <h1>CUEd <small>for Android</small></h1>
+      <p class="tag">An offline music player with a real crossfade, a live spectrograph, lyrics, and sharing that never touches a server. No accounts. No cloud. No AI.</p>
+      <div class="row" id="get">
+        <a class="btn" href="https://github.com/ShinobiHanzo/CUEd/releases/latest/download/CUEd.apk">Download the APK</a>
+        <a class="btn alt" href="https://github.com/ShinobiHanzo/CUEd/releases">All releases</a>
+      </div>
+      <div class="ver" id="ver">Android 8.0 or newer. Scan the code with your phone to download directly.</div>
+    </div>
+    <div class="qr" aria-label="QR code linking to the latest APK"><object data="qr.svg" type="image/svg+xml" style="width:100%;height:100%"></object></div>
+  </div>
+
+  <section id="install">
+    <h2>Install and update</h2>
+    <ol>
+      <li>Download the APK (button or QR above) and open it. Android asks once to allow installs from your browser or file manager.</li>
+      <li>On first launch, allow access to your music. CUEd scans what is already on the phone.</li>
+      <li><b>Updating:</b> Settings → Updates → <i>Check for updates</i>. CUEd downloads the new APK, verifies its SHA-256 against the published checksum, then hands it to Android's installer. It also checks once a day by itself and shows a banner on Home. No more trips to this page.</li>
+    </ol>
+    <div class="note">Builds are signed with a public dev key so they install over each other. Only install APKs from this page or the GitHub releases.</div>
+  </section>
+
+  <section id="play">
+    <h2>Playing</h2>
+    <div class="grid">
+      <div class="card"><b>Gestures on the artwork</b>Swipe left/right for next/previous. Tap to play or pause. Double-tap to favourite. Hold for the track menu. Swipe up for sing-along lyrics.</div>
+      <div class="card"><b>Mini player</b>Swipe the strip left or right to skip. Tap to open the player.</div>
+      <div class="card"><b>Scrubber</b>A plain bar or a live spectrograph drawn from the audio itself (no microphone). Choose in Settings → Scrubber. Tap or drag to seek.</div>
+      <div class="card"><b>Crossfade</b>Settings → Crossfade: on by default, 1–20 s, equal-power / linear / smooth curve. Off means gapless.</div>
+      <div class="card"><b>Tempo-match crossfade</b>Off by default, separate switch. Matches the incoming track's beat grid at 1:1, 2:1, 3:2, 4:3… whichever needs the least stretch, and glides both tracks to the new tempo. Falls back to the normal crossfade when tempos don't relate.</div>
+      <div class="card"><b>Skip silence</b>Settings → Silence: cuts quiet stretches longer than a tolerance. Position stays accurate.</div>
+    </div>
+  </section>
+
+  <section id="library">
+    <h2>Library, genres, playlists</h2>
+    <ul>
+      <li><b>Home</b> shows Trending, Newly downloaded, Unplayed, Forgotten, Favourites and Recommended. Every list is a rule over your own listening history, readable in the source. Any list can be saved as a playlist.</li>
+      <li><b>Genres</b> are read from each file's tag and tidied ("Hip-Hop", "hiphop" and "(7)" all become <code>hip hop</code>). Settings → Genres can re-read tags, tidy labels, or fill gaps from MusicBrainz (opt-in). Tracks you edit by hand are never re-labelled. The Library screen shows an <i>unlabelled</i> chip while anything is missing a genre.</li>
+      <li><b>Playlists</b> are hand-curated: create, reorder, rename, add from any track's menu.</li>
+    </ul>
+  </section>
+
+  <section id="download">
+    <h2>Downloading with spotdl</h2>
+    <p>CUEd doesn't download from streaming services itself; it drives <a href="https://github.com/spotDL/spotify-downloader">spotdl</a>, either on the phone in Termux or on a computer on your Wi-Fi.</p>
+    <h3>Option A: Termux on the phone</h3>
+    <pre>pkg install python ffmpeg
+pip install spotdl
+termux-setup-storage
+echo "allow-external-apps=true" &gt;&gt; ~/.termux/termux.properties</pre>
+    <p>Then grant CUEd the "Run commands in Termux" permission and pick <i>Termux</i> under Downloads → Backend.</p>
+    <h3>Option B: companion server on a laptop or Pi</h3>
+    <pre>pip install spotdl
+python3 tools/spotdl-server/server.py --port 8766</pre>
+    <p>Pick <i>Companion (LAN)</i> and enter <code>http://&lt;that-machine-ip&gt;:8766</code>. Files are pulled over to the phone when done.</p>
+    <h3>Sharing links</h3>
+    <p>Share a link to CUEd from Spotify, YouTube, Apple Music, Deezer, Tidal, SoundCloud, Bandcamp or Amazon Music, or open the link with CUEd. It lands in the download box with what was detected. Spotify and YouTube go straight to spotdl; other platforms' tracks and albums are matched via song.link; Deezer playlists are expanded track by track. Apple Music, Tidal, SoundCloud and Amazon playlists can't be read without an account, so share those tracks one by one.</p>
+    <p>Two checkboxes control lyrics with downloads: save <code>.lrc</code> files beside tracks, and look lyrics up in CUEd afterwards.</p>
+  </section>
+
+  <section id="lyrics">
+    <h2>Lyrics</h2>
+    <p>Swipe up on the artwork (or tap the lyric line under the scrubber). Sources, in order: lyrics embedded in the file's tag (spotdl writes these), a <code>.lrc</code> or <code>.txt</code> beside the file, then <a href="https://lrclib.net">lrclib.net</a> if allowed in Settings → Lyrics. Synced lyrics scroll with the song; tap a line to jump there. Settings → Lyrics can fetch for the whole library.</p>
+  </section>
+
+  <section id="share">
+    <h2>Sharing tracks and the app</h2>
+    <p>Track menu → Share. The phone shows a QR code and, if NFC is on, waits to be tapped by another phone on its Receive screen (sidebar → Receive a share). The code carries the track's source link, a local file URL served by the phone while the Share screen is open, and a link to install CUEd itself. Nothing goes through a server.</p>
+  </section>
+
+  <section id="car">
+    <h2>Car mode and voice</h2>
+    <p>Sidebar (☰) → <b>Car mode</b>: one screen of oversized controls, quick-play tiles and a big Voice button, with spoken replies. It can switch on by itself when Android reports a car dock. Android Auto shows CUEd as a media app with a browse tree (enable "Unknown sources" in the Android Auto app's developer settings, since CUEd isn't on the Play Store).</p>
+    <p>Voice works from the mic button, from Google Assistant ("play <i>forgotten tracks</i> on CUEd") and from Android Auto. Understanding is rule-based: "play something", "play my gym playlist", "play some house", "play songs by Daft Punk", "next", "shuffle off", "car mode", "what's playing".</p>
+  </section>
+
+  <section id="podcasts">
+    <h2>Podcasts and audiobooks</h2>
+    <p>Anything over 12 minutes is kept out of the music library and lives under Sidebar → Podcasts &amp; audiobooks. It resumes where you stopped, gets back-10 / forward-30 and speed controls, and is never crossfaded, recommended, or queued unless you pick it or put it in a playlist. Misfiled? "Move to Music" is in the track menu.</p>
+  </section>
+
+  <section id="privacy">
+    <h2>What leaves the phone</h2>
+    <table>
+      <tr><th>Never</th><td>Listening history, library, playlists, recommendations. All local, no account, no telemetry.</td></tr>
+      <tr><th>Your LAN only</th><td>The share server (while the Share screen is open) and the companion downloader.</td></tr>
+      <tr><th>On request</th><td>spotdl (whatever it needs to download), song.link and Deezer's API (to resolve shared links), lrclib.net (lyrics, toggle), MusicBrainz (genres, opt-in), api.github.com (updates, toggle).</td></tr>
+    </table>
+  </section>
+
+  <footer>CUEd is MIT-licensed. <a href="https://github.com/ShinobiHanzo/CUEd">Source, issues and releases on GitHub.</a></footer>
+</main>
+
+<script>
+  // Progressive: show the current version if the Releases API is reachable (public repo).
+  fetch('https://api.github.com/repos/ShinobiHanzo/CUEd/releases?per_page=5', {headers:{Accept:'application/vnd.github+json'}})
+    .then(r => r.ok ? r.json() : null)
+    .then(list => {
+      if (!list) return;
+      const rel = list.find(r => !r.draft && r.assets && r.assets.some(a => a.name.endsWith('.apk')));
+      if (!rel) return;
+      const apk = rel.assets.find(a => a.name === 'CUEd-' + rel.tag_name + '.apk') || rel.assets.find(a => a.name.endsWith('.apk'));
+      const mb = apk ? (apk.size / 1048576).toFixed(1) + ' MB' : '';
+      document.getElementById('ver').textContent = 'Latest: ' + rel.tag_name + (mb ? ' · ' + mb : '') + ' · ' + new Date(rel.published_at).toLocaleDateString() + ' · Android 8.0 or newer.';
+    }).catch(() => {});
+</script>
+</body>
+</html>

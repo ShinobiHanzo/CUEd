@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,12 +42,25 @@ fun HomeScreen(
     onPlay: (List<TrackEntity>, Int) -> Unit,
     onOpenList: (SmartList) -> Unit,
     onTrackMore: (TrackEntity) -> Unit,
+    updateAvailable: String? = null,
+    onUpdate: () -> Unit = {},
 ) {
     val lists by vm.smartLists.collectAsState()
     val scanning by vm.scanning.collectAsState()
     val pending by vm.analysisPending.collectAsState()
 
     LazyColumn(Modifier.fillMaxWidth()) {
+        if (updateAvailable != null) item {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clickable(onClick = onUpdate)
+                    .background(dev.cued.app.ui.theme.Ink3, androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Default.SystemUpdate, contentDescription = null, tint = dev.cued.app.ui.theme.Teal)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) { Text("CUEd v$updateAvailable is available", style = MaterialTheme.typography.bodyMedium); Text("Tap to download and install", style = MaterialTheme.typography.bodySmall, color = Muted) }
+            }
+        }
         item {
             SectionHeader("CUEd", subtitle = if (scanning) "Scanning library…" else if (pending > 0) "Analysing $pending track(s) in the background" else "Offline. Local. Yours.") {
                 if (scanning) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)

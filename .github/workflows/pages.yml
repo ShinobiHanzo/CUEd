@@ -1,0 +1,37 @@
+name: Pages
+
+# Publishes site/ to GitHub Pages. Needs the repository to be public (Pages
+# isn't available on private repos for free plans). The first run tries to
+# enable Pages itself; if that is refused, enable it once under
+# Settings → Pages → Source: GitHub Actions.
+on:
+  push:
+    branches: ["**"]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

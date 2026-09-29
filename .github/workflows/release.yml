@@ -72,6 +72,8 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/CUEd-${{ steps.ver.outputs.tag }}.apk"
+          # Stable name so https://github.com/.../releases/latest/download/CUEd.apk always points at the newest build.
+          cp app/build/outputs/apk/release/app-release.apk "dist/CUEd.apk"
           (cd dist && sha256sum "CUEd-${{ steps.ver.outputs.tag }}.apk" > "CUEd-${{ steps.ver.outputs.tag }}.apk.sha256")
           cat dist/*.sha256
 
@@ -82,7 +84,7 @@ jobs:
             echo
             echo "Offline Android music player: two-deck crossfade, optional tempo-matched blends, spectrograph scrubber, smart lists, spotdl downloads (Termux or LAN companion), QR/NFC/local sharing, car mode, voice control."
             echo
-            echo "**Install:** download the APK below, open it on the phone, allow installs from your browser/file manager. minSdk 26 (Android 8.0)."
+            echo "**Install:** download the APK below, open it on the phone, allow installs from your browser/file manager. minSdk 26 (Android 8.0). Already have CUEd? Settings → Updates installs this in-app."
             echo
             if [ "${{ steps.key.outputs.signed }}" = "dev" ]; then
               echo "> ⚠️ **Pre-release, signed with the public dev key** in \`keystore/cued-dev.jks\`. That key only makes builds upgrade over each other; it does not prove who built this file. Only install APKs from this Releases page. See \`keystore/README.md\` to switch to a private key."
@@ -101,7 +103,8 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: CUEd ${{ steps.ver.outputs.tag }}
           body_path: notes.md
-          prerelease: true
+          # Not marked pre-release so /releases/latest resolves to it (the in-app updater and the site rely on that).
+          prerelease: false
           generate_release_notes: true
           files: |
             dist/*.apk

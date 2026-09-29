@@ -9,7 +9,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.platform.LocalContext
+import dev.cued.app.update.UpdateManager
+import dev.cued.app.ui.theme.Teal
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -126,8 +137,52 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("Receive a share", "Scan a CUEd QR or tap phones")
         TextButton(onClick = onOpenReceive, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Open receiver") }
 
+        SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
+        UpdateBlock(vm)
+
         SectionHeader("About", "CUEd: offline music player with spectrograph, crossfade and local sharing. No accounts, no telemetry, no models: every recommendation is a rule you can read in the source.")
         Spacer(Modifier.height(96.dp))
+    }
+}
+
+@Composable
+private fun UpdateBlock(vm: SettingsViewModel) {
+    val st by vm.update.collectAsState()
+    val us by vm.updateSettings.collectAsState()
+    val context = LocalContext.current
+    var token by remember(us.githubToken) { mutableStateOf(us.githubToken.orEmpty()) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("Installed: v${vm.currentVersion}", style = MaterialTheme.typography.labelLarge)
+        when (val s = st) {
+            UpdateManager.State.Idle -> TextButton(onClick = { vm.checkForUpdate() }) { Text("Check for updates") }
+            UpdateManager.State.Checking -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("  Checking GitHub…", color = Muted) }
+            is UpdateManager.State.UpToDate -> Row(verticalAlignment = Alignment.CenterVertically) { Text("You're on the latest version.", color = Muted); TextButton(onClick = { vm.checkForUpdate() }) { Text("Check again") } }
+            is UpdateManager.State.Available -> {
+                Text("v${s.release.version} is available (${s.release.apkSize / 1024 / 1024} MB)", color = Teal, style = MaterialTheme.typography.titleSmall)
+                if (s.release.notes.isNotBlank()) Text(s.release.notes.lines().take(12).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(vertical = 4.dp))
+                Row { Button(onClick = { vm.downloadUpdate() }) { Text("Download") }; TextButton(onClick = { vm.dismissUpdate() }) { Text("Later") } }
+            }
+            is UpdateManager.State.Downloading -> {
+                Text("Downloading v${s.release.version}…", color = Muted)
+                LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+            }
+            is UpdateManager.State.Ready -> {
+                Text("v${s.release.version} downloaded and verified.", color = Teal)
+                if (vm.canInstall()) Button(onClick = { context.startActivity(vm.installIntent(s.file)) }) { Text("Install") }
+                else Column {
+                    Text("Android needs a one-time permission for CUEd to install updates.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Button(onClick = { context.startActivity(vm.unknownSourcesIntent()) }) { Text("Allow installs from CUEd") }
+                }
+            }
+            is UpdateManager.State.Error -> {
+                Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Row { TextButton(onClick = { vm.checkForUpdate() }) { Text("Retry") }; if (s.release != null) TextButton(onClick = { vm.downloadUpdate() }) { Text("Download again") } }
+            }
+        }
+        ToggleRow("Check automatically", "Once a day when the app opens. One request to api.github.com.", us.autoCheck) { vm.setUpdatesAuto(it) }
+        OutlinedTextField(value = token, onValueChange = { token = it }, singleLine = true, label = { Text("GitHub token (only while the repo is private)") }, modifier = Modifier.fillMaxWidth(),
+            trailingIcon = { TextButton(onClick = { vm.setGithubToken(token) }) { Text("Save") } })
+        Text("Manual downloads: ${UpdateManager.RELEASES_URL}", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

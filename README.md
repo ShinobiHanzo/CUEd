@@ -31,8 +31,12 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 
 ## Get the app
 
-Download the latest APK from the **[Releases](https://github.com/ShinobiHanzo/CUEd/releases)** page
-and sideload it. Pre-releases are signed with the public dev key described in
+**Site with download link, QR and manual:** https://shinobihanzo.github.io/CUEd/
+
+Or download the latest APK from the **[Releases](https://github.com/ShinobiHanzo/CUEd/releases)** page
+(stable link: `https://github.com/ShinobiHanzo/CUEd/releases/latest/download/CUEd.apk`) and sideload it.
+Once installed, Settings → Updates checks GitHub Releases, downloads, verifies the SHA-256 and installs
+in-app. Pre-releases are signed with the public dev key described in
 [`keystore/README.md`](keystore/README.md); only install builds from that page.
 
 ## Building
@@ -47,7 +51,7 @@ Requirements: JDK 17+, Android SDK (API 35), Gradle wrapper included.
 `:app` is skipped automatically when no SDK is configured, so `:core` builds anywhere.
 CI (`.github/workflows/android.yml`) runs both and uploads a debug APK on every push.
 Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`, which builds a signed release
-APK and publishes it on the Releases page.
+APK and publishes it on the Releases page. `.github/workflows/pages.yml` publishes `site/` to GitHub Pages.
 
 ## Docs
 
