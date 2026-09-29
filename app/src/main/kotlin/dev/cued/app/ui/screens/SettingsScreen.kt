@@ -37,6 +37,9 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
     val ly by vm.lyrics.collectAsState()
     val bulk by vm.lyricsBulk.collectAsState()
     val lyricsCount by vm.lyricsCount.collectAsState()
+    val gs by vm.genreSettings.collectAsState()
+    val genreProgress by vm.genreProgress.collectAsState()
+    val unlabelledCount by vm.unlabelledCount.collectAsState()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         SectionHeader("Crossfade", "Standard volume blend between tracks")
@@ -77,6 +80,28 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         }
         LabeledSlider("Visual delay", "${ui.visualDelayMs} ms", ui.visualDelayMs.toFloat(), 0f..400f, 39) { vm.setVisualDelay(it.toInt()) }
         Text("The live spectrograph taps audio before it reaches the speaker; raise this if the bars lead the sound (Bluetooth adds a lot).", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+
+        SectionHeader("Genres", if (unlabelledCount > 0) "$unlabelledCount music track(s) have no genre yet" else "Every music track has a genre")
+        Text(
+            "Labels come from the file's own genre tag (spotdl writes Spotify's genres there), normalised so \"Hip-Hop\", \"hiphop\" and \"(7)\" all become \"hip hop\". Tracks you edit by hand are locked and never re-labelled automatically.",
+            Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
+        val gp = genreProgress
+        if (gp?.running == true) {
+            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { vm.cancelGenres() }) { Text("Stop") }
+                Text("${gp.phase}: ${gp.done}/${gp.total}  ·  ${gp.labelled} labelled", color = Muted)
+            }
+        } else {
+            Row(Modifier.padding(horizontal = 8.dp)) {
+                TextButton(onClick = { vm.readTagsMissing() }) { Text("Label unlabelled from tags") }
+                TextButton(onClick = { vm.readTagsAll() }) { Text("Re-read all tags") }
+                TextButton(onClick = { vm.tidyGenres() }) { Text("Tidy labels") }
+            }
+            gp?.let { Text("last run: ${it.phase}, ${it.labelled} of ${it.total} changed", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted) }
+        }
+        ToggleRow("Look up missing genres on MusicBrainz", "Open data, no account. Only for tracks whose files carry no genre at all; one request a second by their rules. Sends artist and title.", gs.online) { vm.setGenresOnline(it) }
+        if (gs.online && gp?.running != true) TextButton(onClick = { vm.lookupGenresOnline() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Look up unlabelled tracks now") }
 
         SectionHeader("Lyrics", "Embedded tag → .lrc beside the file → lrclib.net")
         ToggleRow("Fetch from lrclib.net", "Open, key-less lyrics database. The only host CUEd contacts outside your LAN, and only for tracks with nothing embedded.", ly.fetchOnline) { vm.setLyricsOnline(it) }

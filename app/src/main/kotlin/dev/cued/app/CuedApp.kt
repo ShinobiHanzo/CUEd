@@ -9,6 +9,7 @@ import dev.cued.app.data.LibraryRepository
 import dev.cued.app.data.Settings
 import dev.cued.app.data.db.CuedDatabase
 import dev.cued.app.download.DownloadManager
+import dev.cued.app.genre.GenreRepository
 import dev.cued.app.lyrics.LyricsRepository
 import dev.cued.app.playback.CarModeDetector
 import dev.cued.app.playback.PlayerHolder
@@ -60,4 +61,10 @@ class Graph(val app: Application) {
     val shareServer: ShareServer by lazy { ShareServer(app, this) }
     val carDetector: CarModeDetector by lazy { CarModeDetector(app) }
     val lyrics: LyricsRepository by lazy { LyricsRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
+    val genres: GenreRepository by lazy { GenreRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
+
+    init {
+        // New or previously unlabelled files get their tag genres read after each scan.
+        library.onScanned = { genres.refreshFromTagsAsync(onlyMissing = true) }
+    }
 }

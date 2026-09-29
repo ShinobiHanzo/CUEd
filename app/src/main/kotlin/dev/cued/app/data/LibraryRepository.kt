@@ -9,6 +9,7 @@ import dev.cued.app.data.db.CuedDatabase
 import dev.cued.app.data.db.PlayEventEntity
 import dev.cued.app.data.db.PlaylistEntity
 import dev.cued.app.data.db.TrackEntity
+import dev.cued.core.genre.GenreNormalizer
 import dev.cued.core.model.TrackStats
 import dev.cued.core.reco.PlayEvent
 import dev.cued.core.reco.Recommender
@@ -118,12 +119,22 @@ class LibraryRepository(
 
     suspend fun setFavourite(id: Long, fav: Boolean) = db.tracks().setFavourite(id, fav)
     suspend fun genresOf(id: Long): List<String> = db.tracks().genresOf(id)
-    suspend fun setGenres(id: Long, genres: Collection<String>) = db.tracks().setGenres(id, genres)
-    suspend fun addGenre(id: Long, genre: String) {
-        val g = genre.trim().lowercase()
-        if (g.isNotEmpty()) db.tracks().addGenre(dev.cued.app.data.db.TrackGenreEntity(id, g))
+    /** Hand edits lock the track so automatic re-labelling never overwrites them. */
+    suspend fun setGenres(id: Long, genres: Collection<String>) {
+        db.tracks().setGenres(id, genres.flatMap { GenreNormalizer.normalize(it) }.distinct())
+        db.tracks().setGenresLocked(id, true)
     }
-    suspend fun removeGenre(id: Long, genre: String) = db.tracks().removeGenre(id, genre)
+    suspend fun addGenre(id: Long, genre: String) {
+        for (g in GenreNormalizer.normalize(genre)) db.tracks().addGenre(dev.cued.app.data.db.TrackGenreEntity(id, g))
+        db.tracks().setGenresLocked(id, true)
+    }
+    suspend fun removeGenre(id: Long, genre: String) { db.tracks().removeGenre(id, genre); db.tracks().setGenresLocked(id, true) }
+    suspend fun unlockGenres(id: Long) = db.tracks().setGenresLocked(id, false)
+    /** Set automatically (share payload, downloads): does not lock. */
+    suspend fun setGenresAuto(id: Long, genres: Collection<String>) = db.tracks().setGenres(id, genres.flatMap { GenreNormalizer.normalize(it) }.distinct())
+
+    /** Called after every scan; the graph wires it to the genre sweep. */
+    var onScanned: (() -> Unit)? = null
     suspend fun setSourceLink(id: Long, link: String?) = db.tracks().setSourceLink(id, link)
 
     suspend fun createPlaylist(name: String, description: String = ""): Long =
@@ -224,7 +235,7 @@ class LibraryRepository(
                                 kind = if (duration > TrackEntity.LONG_THRESHOLD_MS) TrackEntity.KIND_LONG else TrackEntity.KIND_MUSIC,
                             )
                         )
-                        if (id > 0 && !genre.isNullOrBlank()) db.tracks().setGenres(id, genre.split('/', ';', ',').map { it.trim() })
+                        if (id > 0 && !genre.isNullOrBlank()) db.tracks().setGenres(id, GenreNormalizer.normalize(genre))
                     } else if (old.title != title || old.artist != artist || old.album != album || old.uri != uri || old.missing || old.durationMs != duration) {
                         db.tracks().update(old.copy(title = title, artist = artist, album = album, albumId = albumId, uri = uri, path = path, durationMs = duration, missing = false))
                     }
@@ -234,6 +245,7 @@ class LibraryRepository(
         } finally {
             _scanning.value = false
         }
+        onScanned?.invoke()
     }
 
     companion object {

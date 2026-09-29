@@ -59,6 +59,11 @@ data class LyricsSettings(
     val autoFetch: Boolean,
 )
 
+data class GenreSettings(
+    /** Allowed to ask MusicBrainz for tracks whose files carry no genre at all. */
+    val online: Boolean,
+)
+
 data class CarSettings(
     /** Manual toggle from the sidebar. */
     val carMode: Boolean,
@@ -89,6 +94,7 @@ class Settings(private val context: Context) {
         val silenceToleranceMs = intPreferencesKey("silence_tolerance_ms")
         val lyricsOnline = booleanPreferencesKey("lyrics_online")
         val lyricsAuto = booleanPreferencesKey("lyrics_auto")
+        val genresOnline = booleanPreferencesKey("genres_online")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
@@ -126,6 +132,10 @@ class Settings(private val context: Context) {
     suspend fun lyricsNow() = lyrics.first()
     suspend fun setLyricsOnline(on: Boolean) = context.dataStore.edit { it[K.lyricsOnline] = on }
     suspend fun setLyricsAuto(on: Boolean) = context.dataStore.edit { it[K.lyricsAuto] = on }
+
+    val genres: Flow<GenreSettings> = context.dataStore.data.map { p -> GenreSettings(online = p[K.genresOnline] ?: false) }
+    suspend fun genresNow() = genres.first()
+    suspend fun setGenresOnline(on: Boolean) = context.dataStore.edit { it[K.genresOnline] = on }
 
     val car: Flow<CarSettings> = context.dataStore.data.map { p ->
         CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true)

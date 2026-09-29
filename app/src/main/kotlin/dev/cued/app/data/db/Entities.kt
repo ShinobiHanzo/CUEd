@@ -40,6 +40,8 @@ data class TrackEntity(
     @ColumnInfo(defaultValue = "music") val kind: String = KIND_MUSIC,
     /** Last playback position for long plays so they resume where you left off. */
     @ColumnInfo(defaultValue = "0") val resumeMs: Long = 0L,
+    /** True once the user edits genres by hand; automatic re-labelling then leaves this track alone. */
+    @ColumnInfo(defaultValue = "0") val genresLocked: Boolean = false,
 ) {
     val isLong: Boolean get() = kind == KIND_LONG
 

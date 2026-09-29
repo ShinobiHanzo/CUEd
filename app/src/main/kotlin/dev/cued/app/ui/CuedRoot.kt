@@ -66,6 +66,7 @@ import dev.cued.app.ui.screens.DownloadsScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
 import dev.cued.app.ui.screens.LongPlaysScreen
+import dev.cued.app.ui.screens.UNLABELLED
 import dev.cued.app.ui.screens.NowPlayingScreen
 import dev.cued.app.ui.screens.PlaylistDetailScreen
 import dev.cued.app.ui.screens.PlaylistsScreen
@@ -243,10 +244,15 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 }
                 composable("genre/{name}") { e ->
                     val genre = java.net.URLDecoder.decode(e.arguments!!.getString("name")!!, "UTF-8")
-                    val flow = remember(genre) { lvm.byGenre(genre) }
-                    val tracks by flow.collectAsState(initial = emptyList())
-                    TrackListScreen(genre, "${tracks.size} tracks", tracks, genreMap, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
-                        onSaveAsPlaylist = { name -> lvm.saveAsPlaylist(name, tracks.map { it.id }) })
+                    if (genre == UNLABELLED) {
+                        val tracks by lvm.unlabelled.collectAsState()
+                        TrackListScreen("No genre yet", "Open a track's menu → Edit genres. Settings → Genres can fill these from tags or MusicBrainz.", tracks, genreMap, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more)
+                    } else {
+                        val flow = remember(genre) { lvm.byGenre(genre) }
+                        val tracks by flow.collectAsState(initial = emptyList())
+                        TrackListScreen(genre, "${tracks.size} tracks", tracks, genreMap, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
+                            onSaveAsPlaylist = { name -> lvm.saveAsPlaylist(name, tracks.map { it.id }) })
+                    }
                 }
                 composable("similar/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     val id = e.arguments!!.getLong("id")
@@ -293,6 +299,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onSimilar = { nav.navigate("similar/${tr.id}") },
             onAnalyse = { lvm.analyse(tr.id) },
             onToggleKind = { lvm.setKind(tr.id, if (tr.isLong) TrackEntity.KIND_MUSIC else TrackEntity.KIND_LONG) },
+            onUnlockGenres = { lvm.unlockGenres(tr.id) },
         )
     }
 }

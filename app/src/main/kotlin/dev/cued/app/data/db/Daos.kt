@@ -26,6 +26,24 @@ interface TrackDao {
     @Query("UPDATE tracks SET kind = :kind WHERE id = :id")
     suspend fun setKind(id: Long, kind: String)
 
+    @Query("UPDATE tracks SET genresLocked = :locked WHERE id = :id")
+    suspend fun setGenresLocked(id: Long, locked: Boolean)
+
+    @Query("SELECT id FROM tracks WHERE missing = 0 AND kind = 'music' AND genresLocked = 0")
+    suspend fun unlockedMusicIds(): List<Long>
+
+    @Query("SELECT id FROM tracks WHERE genresLocked = 1")
+    suspend fun lockedIds(): List<Long>
+
+    @Query("SELECT t.id FROM tracks t WHERE t.missing = 0 AND t.kind = 'music' AND t.genresLocked = 0 AND NOT EXISTS (SELECT 1 FROM track_genres g WHERE g.trackId = t.id)")
+    suspend fun unlabelledMusicIds(): List<Long>
+
+    @Query("SELECT t.* FROM tracks t WHERE t.missing = 0 AND t.kind = 'music' AND NOT EXISTS (SELECT 1 FROM track_genres g WHERE g.trackId = t.id) ORDER BY t.artist COLLATE NOCASE, t.title COLLATE NOCASE")
+    fun observeUnlabelled(): Flow<List<TrackEntity>>
+
+    @Query("SELECT COUNT(*) FROM tracks t WHERE t.missing = 0 AND t.kind = 'music' AND NOT EXISTS (SELECT 1 FROM track_genres g WHERE g.trackId = t.id)")
+    fun observeUnlabelledCount(): Flow<Int>
+
     @Query("UPDATE tracks SET resumeMs = :ms WHERE id = :id")
     suspend fun setResume(id: Long, ms: Long)
 

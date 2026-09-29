@@ -34,6 +34,8 @@ import dev.cued.app.share.QrCodes
 import dev.cued.app.data.db.LyricsEntity
 import dev.cued.app.lyrics.LyricsRepository
 import dev.cued.app.data.LyricsSettings
+import dev.cued.app.data.GenreSettings
+import dev.cued.app.genre.GenreRepository
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import dev.cued.core.mix.CrossfadeCurve
@@ -81,6 +83,9 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     val genres: StateFlow<List<String>> = lib.genres.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val playlists: StateFlow<List<PlaylistEntity>> = lib.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val longPlays: StateFlow<List<TrackEntity>> = lib.longPlays.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val unlabelled: StateFlow<List<TrackEntity>> = graph.genres.unlabelled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val unlabelledCount: StateFlow<Int> = graph.genres.unlabelledCount.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    fun unlockGenres(trackId: Long) = viewModelScope.launch { lib.unlockGenres(trackId) }
     fun setKind(trackId: Long, kind: String) = viewModelScope.launch { lib.setKind(trackId, kind) }
     val smartLists: StateFlow<Map<SmartList, List<TrackEntity>>> = lib.smartLists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val scanning: StateFlow<Boolean> = lib.scanning
@@ -368,7 +373,7 @@ class LocalFileReceiver(private val graph: Graph) {
             graph.library.rescan()
             graph.db.tracks().byMediaStoreId(id)?.let { t ->
                 payload.link?.let { graph.library.setSourceLink(t.id, it) }
-                if (payload.genres.isNotEmpty()) graph.library.setGenres(t.id, payload.genres)
+                if (payload.genres.isNotEmpty()) graph.library.setGenresAuto(t.id, payload.genres)
                 if (!t.isLong) graph.analysis.request(t.id)
             }
         } finally { conn.disconnect() }
@@ -396,6 +401,15 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setLyricsAuto(on: Boolean) = viewModelScope.launch { graph.settings.setLyricsAuto(on) }
     fun fetchAllLyrics() = graph.lyrics.fetchMissingAsync()
     fun cancelBulkLyrics() = graph.lyrics.cancelBulk()
+    val genreSettings: StateFlow<GenreSettings> = graph.settings.genres.stateIn(viewModelScope, SharingStarted.Eagerly, GenreSettings(false))
+    val genreProgress: StateFlow<GenreRepository.Progress?> = graph.genres.progress
+    val unlabelledCount: StateFlow<Int> = graph.genres.unlabelledCount.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    fun setGenresOnline(on: Boolean) = viewModelScope.launch { graph.settings.setGenresOnline(on) }
+    fun readTagsMissing() = graph.genres.refreshFromTagsAsync(onlyMissing = true)
+    fun readTagsAll() = graph.genres.refreshFromTagsAsync(onlyMissing = false)
+    fun tidyGenres() = graph.genres.tidyLabelsAsync()
+    fun lookupGenresOnline() = graph.genres.lookupOnlineAsync()
+    fun cancelGenres() = graph.genres.cancel()
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }

@@ -27,6 +27,8 @@ import dev.cued.app.ui.components.GenreChips
 import dev.cued.app.ui.components.SectionHeader
 import dev.cued.app.ui.components.TrackRow
 
+const val UNLABELLED = "__unlabelled__"
+
 @Composable
 fun LibraryScreen(
     vm: LibraryViewModel,
@@ -48,7 +50,9 @@ fun LibraryScreen(
             trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { vm.query.value = "" }) { Icon(Icons.Default.Close, contentDescription = "Clear") } },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        if (genres.isNotEmpty()) GenreChips(genres, onClick = onOpenGenre)
+        val unlabelledCount by vm.unlabelledCount.collectAsState()
+        val chips = (if (unlabelledCount > 0) listOf("unlabelled ($unlabelledCount)") else emptyList()) + genres
+        if (chips.isNotEmpty()) GenreChips(chips, onClick = { if (it.startsWith("unlabelled")) onOpenGenre(UNLABELLED) else onOpenGenre(it) })
         SectionHeader("${tracks.size} tracks")
         if (tracks.isEmpty()) EmptyHint(if (query.isBlank()) "No music yet. Pull down from Home to rescan, or download something." else "No matches")
         LazyColumn(Modifier.fillMaxSize()) {

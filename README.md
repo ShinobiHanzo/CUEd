@@ -22,7 +22,8 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Gestures | Artwork: swipe left/right for next/previous, swipe up for sing-along lyrics over the blurred art, tap play/pause, double-tap favourite, hold for the menu. Mini player: swipe to skip | `ui/screens/NowPlayingScreen.kt`, `ui/components/MiniPlayer.kt` |
 | Podcasts & audiobooks | Anything over 12 minutes is sorted out of the music library into its own page (drawer): resumes where you stopped, ±10/30 s and speed controls, never crossfaded or recommended. Movable by hand from the track menu |
 | Lyrics | Embedded ID3 lyrics → `.lrc`/`.txt` sidecar → lrclib.net (toggle). Synced LRC scrolls with the song and seeks on tap; bulk download for the library | `core/.../lyrics/`, `app/.../lyrics/`, `ui/components/LyricsPanel.kt` |
-| Library | MediaStore scan into Room; favourites; free-text genre labels (many per track); play/skip history | `app/.../data` |
+| Library | MediaStore scan into Room; favourites; play/skip history | `app/.../data` |
+| Genres | Read from file tags on every scan and normalised (aliases, ID3v1 codes, multi-genre splits); optional MusicBrainz fill for untagged files; hand edits are locked; sweeps to re-label or tidy the whole library | `core/.../genre/`, `app/.../genre/` |
 | Smart lists | Trending (recency-weighted plays), Newly downloaded, Unplayed, Forgotten, Favourites, Recommended (genre/artist/tempo/co-play heuristics, with reasons shown) | `core/.../reco/SmartLists.kt`, `Recommender.kt` |
 | Playlists | Create, rename, reorder, save any smart list or genre or "more like this" as a playlist | `ui/screens/PlaylistsScreen.kt` |
 | Downloads | `spotdl` via **Termux** on the phone, or via the **companion server** on a laptop/Pi over LAN. Spotify/YouTube links or search text; share-sheet integration | `app/.../download`, `tools/spotdl-server` |
@@ -56,6 +57,7 @@ APK and publishes it on the Releases page.
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
 - [Lyrics](docs/lyrics.md): where lyrics come from and what goes online
+- [Genres](docs/genres.md): where labels come from, normalisation, fixing existing tracks
 
 ## Status
 
