@@ -1,6 +1,5 @@
 package dev.cued.app.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -170,7 +169,7 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
                 },
         ) {
             AlbumArt(track?.albumId, Modifier.fillMaxSize().blur(artBlur).alpha(artAlpha), corner = 20)
-            AnimatedVisibility(
+            androidx.compose.animation.AnimatedVisibility(
                 visible = singAlong,
                 enter = slideInVertically { it / 2 } + fadeIn(),
                 exit = slideOutVertically { it / 2 } + fadeOut(),
