@@ -18,7 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
@@ -92,7 +92,7 @@ fun TrackSheet(
             SheetItem(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") { onEnqueue(); onDismiss() }
             SheetItem(if (track.favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (track.favourite) "Remove from favourites" else "Add to favourites") { onToggleFavourite(); onDismiss() }
             SheetItem(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to playlist") { showPlaylists = true }
-            SheetItem(Icons.Default.Label, "Edit genres" + if (genres.isNotEmpty()) " (${genres.joinToString(", ")})" else "") { showGenres = true }
+            SheetItem(Icons.AutoMirrored.Filled.Label, "Edit genres" + if (genres.isNotEmpty()) " (${genres.joinToString(", ")})" else "") { showGenres = true }
             SheetItem(Icons.Default.Timeline, "More like this") { onSimilar(); onDismiss() }
             SheetItem(Icons.Default.Share, "Share (QR / NFC / local)") { onShare(); onDismiss() }
             SheetItem(Icons.Default.Link, if (track.sourceLink == null) "Set source link (for re-download sharing)" else "Source: ${track.sourceLink}") { showLink = true }

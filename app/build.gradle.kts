@@ -39,6 +39,13 @@ android {
 
     buildFeatures { compose = true }
 
+    lint {
+        // Media3 marks most of its surface @UnstableApi; the app opts in at the use sites that matter.
+        disable += "UnsafeOptInUsageError"
+        abortOnError = false
+        warningsAsErrors = false
+    }
+
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/INDEX.LIST")
     }

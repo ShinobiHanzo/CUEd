@@ -46,6 +46,11 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
       - name: Lint (non-fatal)
         run: ./gradlew :app:lintDebug --no-daemon || true
+      - name: Lint summary
+        if: always()
+        run: |
+          f=app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if [ -f "$f" ]; then grep -E "^[^ ].*(Error|Warning):" "$f" | sed 's#/home/runner/work/CUEd/CUEd/##' | sort | uniq -c | sort -rn | head -80; fi
       - uses: actions/upload-artifact@v4
         with:
           name: cued-debug-apk
