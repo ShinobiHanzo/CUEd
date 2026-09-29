@@ -78,6 +78,7 @@ fun LyricsPanel(
                 item { Spacer(Modifier.height(96.dp)) }
                 itemsIndexed(lines) { i, line ->
                     val active = i == current
+                    val t = line.timeMs
                     Text(
                         line.text.ifBlank { "♪" },
                         fontSize = if (synced) 22.sp else 18.sp,
@@ -86,7 +87,7 @@ fun LyricsPanel(
                         color = when { active -> Teal; synced && current >= 0 && i < current -> Muted.copy(alpha = 0.6f); else -> MaterialTheme.colorScheme.onSurface },
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                            .then(if (line.timeMs != null) Modifier.clickable { onSeek(line.timeMs) } else Modifier),
+                            .then(if (t != null) Modifier.clickable { onSeek(t) } else Modifier),
                     )
                 }
                 item { Spacer(Modifier.height(160.dp)) }
