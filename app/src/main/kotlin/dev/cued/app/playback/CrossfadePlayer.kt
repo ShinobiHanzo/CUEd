@@ -66,6 +66,8 @@ class CrossfadePlayer(
     private val tempoProvider: TempoProvider,
     private val settings: () -> PlaybackSettings,
     private val onTrackFinished: (mediaId: String, playedFraction: Float) -> Unit,
+    /** Called every few seconds while playing, and on pause, so long plays can remember where they are. */
+    private val onProgress: (item: MediaItem, positionMs: Long) -> Unit = { _, _ -> },
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -109,9 +111,14 @@ class CrossfadePlayer(
 
         fun load(mediaItem: MediaItem, positionMs: Long) {
             item = mediaItem
-            player.setMediaItem(mediaItem, if (positionMs == C.TIME_UNSET) 0L else positionMs)
+            var start = if (positionMs == C.TIME_UNSET) 0L else positionMs
+            // Long plays pick up where they were left; songs always start from the top.
+            if (start == 0L && MediaItems.isLong(mediaItem)) start = MediaItems.resumeMs(mediaItem)
+            if (!MediaItems.isLong(mediaItem)) userSpeed = 1f
+            player.setMediaItem(mediaItem, start)
             if (prepared) player.prepare()
             player.playWhenReady = false
+            applySpeed(userSpeed)
         }
 
         fun applyGain(g: Float) { gain = g; player.volume = (g * masterVolume).coerceIn(0f, 1f); spectrumBus.setGain(index, g) }
@@ -144,6 +151,9 @@ class CrossfadePlayer(
     private var repeatMode = Player.REPEAT_MODE_OFF
     private var shuffle = false
     private var masterVolume = 1f
+    /** Listener-chosen playback speed (podcast controls); music always resets to 1x. */
+    private var userSpeed = 1f
+    private var lastProgressAt = 0L
     private var lastError: PlaybackException? = null
 
     // ---- Transition state ------------------------------------------------
@@ -221,7 +231,7 @@ class CrossfadePlayer(
             .setShuffleModeEnabled(shuffle)
             .setVolume(masterVolume)
             .setAudioAttributes(AudioAttributes.DEFAULT)
-            .setPlaybackParameters(PlaybackParameters.DEFAULT)
+            .setPlaybackParameters(PlaybackParameters(userSpeed, 1f))
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
             .setMaxSeekToPreviousPositionMs(3_000L)
@@ -246,6 +256,7 @@ class CrossfadePlayer(
             active.player.playWhenReady = false
             transition?.incoming?.player?.playWhenReady = false
             stopTicking()
+            reportProgress(force = true)
             if (!resumeOnFocusGain) focus.abandon()
         }
         return DONE
@@ -312,7 +323,11 @@ class CrossfadePlayer(
         return DONE
     }
 
-    override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> = DONE
+    override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> {
+        userSpeed = playbackParameters.speed.coerceIn(0.5f, 3f)
+        if (transition == null) active.applySpeed(userSpeed)
+        return DONE
+    }
 
     override fun handleSetMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
         cancelTransition()
@@ -490,11 +505,23 @@ class CrossfadePlayer(
     private fun startTicking() { if (!ticking) { ticking = true; handler.post(tick) } }
     private fun stopTicking() { ticking = false; handler.removeCallbacks(tick) }
 
+    private fun reportProgress(force: Boolean = false) {
+        val item = active.item ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && now - lastProgressAt < PROGRESS_EVERY_MS) return
+        lastProgressAt = now
+        onProgress(item, activePositionMs())
+    }
+
     private fun onTick() {
+        reportProgress()
         val t = transition
         if (t != null) { runTransition(t); return }
         val s = settings()
         if (!s.crossfadeEnabled && !s.tempoMatch) return
+        // Podcasts and audiobooks are never blended into or out of.
+        val next0 = nextIndex() ?: return
+        if (MediaItems.isLong(playlist[currentIndex]) || MediaItems.isLong(playlist[next0])) return
         val ap = active.player
         if (ap.playbackState != Player.STATE_READY) return
         val duration = ap.duration
@@ -586,7 +613,7 @@ class CrossfadePlayer(
         }
         t.outgoing.stopAndClear()
         t.incoming.applyGain(1f)
-        t.incoming.applySpeed(1f)
+        t.incoming.applySpeed(userSpeed)
         transition = null
         _transitionInfo.value = null
         armedForIndex = -1; armedPlan = null
@@ -632,6 +659,7 @@ class CrossfadePlayer(
     companion object {
         private const val TAG = "CrossfadePlayer"
         private const val TICK_MS = 50L
+        private const val PROGRESS_EVERY_MS = 5_000L
         private const val ARM_BEFORE_END_MS = 40_000L
         private val DONE: ListenableFuture<*> = Futures.immediateVoidFuture()
 
@@ -641,7 +669,7 @@ class CrossfadePlayer(
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, Player.COMMAND_SEEK_TO_PREVIOUS,
             Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_MEDIA_ITEM,
             Player.COMMAND_SEEK_BACK, Player.COMMAND_SEEK_FORWARD,
-            Player.COMMAND_SET_SHUFFLE_MODE, Player.COMMAND_SET_REPEAT_MODE,
+            Player.COMMAND_SET_SHUFFLE_MODE, Player.COMMAND_SET_REPEAT_MODE, Player.COMMAND_SET_SPEED_AND_PITCH,
             Player.COMMAND_GET_CURRENT_MEDIA_ITEM, Player.COMMAND_GET_TIMELINE, Player.COMMAND_GET_METADATA,
             Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS,
             Player.COMMAND_GET_AUDIO_ATTRIBUTES, Player.COMMAND_GET_VOLUME, Player.COMMAND_SET_VOLUME,

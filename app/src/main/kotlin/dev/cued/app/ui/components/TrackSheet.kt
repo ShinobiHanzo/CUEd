@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +70,7 @@ fun TrackSheet(
     onShare: () -> Unit,
     onSimilar: () -> Unit,
     onAnalyse: () -> Unit,
+    onToggleKind: () -> Unit = {},
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showPlaylists by remember { mutableStateOf(false) }
@@ -96,7 +98,8 @@ fun TrackSheet(
             SheetItem(Icons.Default.Timeline, "More like this") { onSimilar(); onDismiss() }
             SheetItem(Icons.Default.Share, "Share (QR / NFC / local)") { onShare(); onDismiss() }
             SheetItem(Icons.Default.Link, if (track.sourceLink == null) "Set source link (for re-download sharing)" else "Source: ${track.sourceLink}") { showLink = true }
-            SheetItem(Icons.Default.GraphicEq, if (track.analysedAt == null) "Analyse tempo & spectrogram" else "Re-analyse tempo & spectrogram") { onAnalyse(); onDismiss() }
+            if (!track.isLong) SheetItem(Icons.Default.GraphicEq, if (track.analysedAt == null) "Analyse tempo" else "Re-analyse tempo") { onAnalyse(); onDismiss() }
+            SheetItem(Icons.Default.SwapHoriz, if (track.isLong) "Move to Music" else "Move to Podcasts & audiobooks") { onToggleKind(); onDismiss() }
         }
     }
 

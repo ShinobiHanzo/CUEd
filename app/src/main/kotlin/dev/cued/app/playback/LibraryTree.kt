@@ -26,6 +26,7 @@ class LibraryTree(private val library: LibraryRepository) {
         const val PLAYLISTS = "playlists"
         const val GENRES = "genres"
         const val TRACKS = "tracks"
+        const val LONG = "long"
     }
 
     fun root(): MediaItem = folder(ROOT, "CUEd", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, playable = false)
@@ -36,11 +37,13 @@ class LibraryTree(private val library: LibraryRepository) {
             folder(PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS, playable = false),
             folder(GENRES, "Genres", MediaMetadata.MEDIA_TYPE_FOLDER_GENRES, playable = false),
             folder(TRACKS, "All tracks", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, playable = true),
+            folder(LONG, "Podcasts & audiobooks", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS, playable = false),
         )
         parentId == SMART -> SmartList.entries.map { folder("$SMART/${it.name}", it.title, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, playable = true, subtitle = it.blurb) }
         parentId == PLAYLISTS -> library.playlists.first().map { folder("playlist/${it.id}", it.name, MediaMetadata.MEDIA_TYPE_PLAYLIST, playable = true) }
         parentId == GENRES -> library.genres.first().map { folder("genre/$it", it, MediaMetadata.MEDIA_TYPE_FOLDER_GENRES, playable = true) }
         parentId == TRACKS -> library.tracks.first().map { MediaItems.fromTrack(it) }
+        parentId == LONG -> library.longPlaysNow().map { MediaItems.fromTrack(it) }
         parentId.startsWith("$SMART/") || parentId.startsWith("playlist/") || parentId.startsWith("genre/") -> expand(parentId)?.map { MediaItems.fromTrack(it) }
         else -> null
     }

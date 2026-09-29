@@ -1,5 +1,6 @@
 package dev.cued.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -35,7 +36,20 @@ data class TrackEntity(
     val analysedAt: Long? = null,
     /** True if the file went missing on the last scan; kept so playlists survive an unplugged SD card. */
     val missing: Boolean = false,
-)
+    /** [KIND_MUSIC] or [KIND_LONG] (podcasts, audiobooks, mixes over 12 minutes). Set on scan, user-overridable. */
+    @ColumnInfo(defaultValue = "music") val kind: String = KIND_MUSIC,
+    /** Last playback position for long plays so they resume where you left off. */
+    @ColumnInfo(defaultValue = "0") val resumeMs: Long = 0L,
+) {
+    val isLong: Boolean get() = kind == KIND_LONG
+
+    companion object {
+        const val KIND_MUSIC = "music"
+        const val KIND_LONG = "long"
+        /** Anything longer than this is treated as a podcast / audiobook / mix, not a song. */
+        const val LONG_THRESHOLD_MS = 12L * 60_000L
+    }
+}
 
 /** Genre labels are free text and many-to-many; a track can be "house" and "deep house" at once. */
 @Entity(

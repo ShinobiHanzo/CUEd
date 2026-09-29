@@ -11,11 +11,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackDao {
-    @Query("SELECT * FROM tracks WHERE missing = 0 ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' ORDER BY title COLLATE NOCASE")
     fun observeAll(): Flow<List<TrackEntity>>
 
-    @Query("SELECT * FROM tracks WHERE missing = 0")
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music'")
     suspend fun all(): List<TrackEntity>
+
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'long' ORDER BY lastPlayedAt DESC, addedAt DESC")
+    fun observeLong(): Flow<List<TrackEntity>>
+
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'long' ORDER BY lastPlayedAt DESC, addedAt DESC")
+    suspend fun allLong(): List<TrackEntity>
+
+    @Query("UPDATE tracks SET kind = :kind WHERE id = :id")
+    suspend fun setKind(id: Long, kind: String)
+
+    @Query("UPDATE tracks SET resumeMs = :ms WHERE id = :id")
+    suspend fun setResume(id: Long, ms: Long)
 
     @Query("SELECT * FROM tracks")
     suspend fun allIncludingMissing(): List<TrackEntity>
@@ -32,10 +44,10 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE mediaStoreId = :mediaStoreId")
     suspend fun byMediaStoreId(mediaStoreId: Long): TrackEntity?
 
-    @Query("SELECT * FROM tracks WHERE missing = 0 AND (title LIKE '%' || :q || '%' OR artist LIKE '%' || :q || '%' OR album LIKE '%' || :q || '%') ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' AND (title LIKE '%' || :q || '%' OR artist LIKE '%' || :q || '%' OR album LIKE '%' || :q || '%') ORDER BY title COLLATE NOCASE")
     fun search(q: String): Flow<List<TrackEntity>>
 
-    @Query("SELECT * FROM tracks WHERE missing = 0 AND analysedAt IS NULL ORDER BY lastPlayedAt DESC, addedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' AND analysedAt IS NULL ORDER BY lastPlayedAt DESC, addedAt DESC LIMIT :limit")
     suspend fun unanalysed(limit: Int): List<TrackEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -75,7 +87,7 @@ interface TrackDao {
     @Query("SELECT DISTINCT genre FROM track_genres ORDER BY genre COLLATE NOCASE")
     fun observeGenres(): Flow<List<String>>
 
-    @Query("SELECT t.* FROM tracks t JOIN track_genres g ON g.trackId = t.id WHERE g.genre = :genre AND t.missing = 0 ORDER BY t.title COLLATE NOCASE")
+    @Query("SELECT t.* FROM tracks t JOIN track_genres g ON g.trackId = t.id WHERE g.genre = :genre AND t.missing = 0 AND t.kind = 'music' ORDER BY t.title COLLATE NOCASE")
     fun observeByGenre(genre: String): Flow<List<TrackEntity>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)

@@ -68,6 +68,16 @@ Room. `tracks` mirrors MediaStore and carries user state (favourite, genres via
 smart lists and recommender read. Files that disappear are flagged `missing`, not deleted,
 so playlists survive an unplugged SD card.
 
+## Long plays
+
+`tracks.kind` is `music` or `long`; the scan sets it from duration (over 12 minutes =
+long) and the track menu can move items either way. Every music query filters on
+`kind = 'music'`, so smart lists, genres, search and the recommender never see podcasts.
+Long plays carry `resumeMs`: the engine reports progress every 5 s and on pause, the
+holder persists it, and `Deck.load` starts a long item from that offset. The engine also
+refuses to arm a crossfade into or out of a long item and honours a listener speed
+(`handleSetPlaybackParameters`) that resets to 1x whenever a song loads.
+
 ## Threading
 
 - ExoPlayer and `SimpleBasePlayer` are driven on the main looper.

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sensors
@@ -64,6 +65,7 @@ import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
+import dev.cued.app.ui.screens.LongPlaysScreen
 import dev.cued.app.ui.screens.NowPlayingScreen
 import dev.cued.app.ui.screens.PlaylistDetailScreen
 import dev.cued.app.ui.screens.PlaylistsScreen
@@ -173,6 +175,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 NavigationDrawerItem(label = { Text("Voice command") }, selected = false, icon = { Icon(Icons.Default.Mic, null) },
                     onClick = { scope.launch { drawer.close() }; voice.listen() })
+                NavigationDrawerItem(label = { Text("Podcasts & audiobooks") }, selected = route == "longplays", icon = { Icon(Icons.Default.Podcasts, null) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("longplays") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("receive") })
                 NavigationDrawerItem(label = { Text("Rescan library") }, selected = false, icon = { Icon(Icons.Default.Refresh, null) },
@@ -259,6 +263,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     val t by flow.collectAsState(initial = null)
                     ShareScreen(svm, id, t?.let { "${it.artist} – ${it.title}" } ?: "", onBack = { nav.popBackStack() })
                 }
+                composable("longplays") {
+                    LongPlaysScreen(lvm, player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more)
+                }
                 composable("receive") {
                     ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { msg -> scope.launch { snackbar.showSnackbar(msg) }; nav.popBackStack() })
                 }
@@ -285,6 +292,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onShare = { nav.navigate("share/${tr.id}") },
             onSimilar = { nav.navigate("similar/${tr.id}") },
             onAnalyse = { lvm.analyse(tr.id) },
+            onToggleKind = { lvm.setKind(tr.id, if (tr.isLong) TrackEntity.KIND_MUSIC else TrackEntity.KIND_LONG) },
         )
     }
 }

@@ -46,7 +46,16 @@ class PlayerHolder(private val context: Context, private val graph: Graph) {
             },
             settings = { latestSettings },
             onTrackFinished = { mediaId, fraction ->
-                mediaId.toLongOrNull()?.let { id -> graph.appScope.launch { graph.library.recordPlayback(id, fraction) } }
+                mediaId.toLongOrNull()?.let { id ->
+                    graph.appScope.launch {
+                        graph.library.recordPlayback(id, fraction)
+                        // A long play heard to the end starts over next time.
+                        if (fraction >= 0.97f) graph.library.track(id)?.takeIf { it.isLong }?.let { graph.library.saveResume(id, 0L) }
+                    }
+                }
+            },
+            onProgress = { item, positionMs ->
+                if (MediaItems.isLong(item)) MediaItems.trackId(item)?.let { id -> graph.appScope.launch { graph.library.saveResume(id, positionMs) } }
             },
         )
 }

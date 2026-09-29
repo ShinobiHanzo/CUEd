@@ -43,6 +43,11 @@ class LibraryRepository(
     val scanning: StateFlow<Boolean> = _scanning
 
     val tracks: Flow<List<TrackEntity>> = db.tracks().observeAll()
+    /** Podcasts, audiobooks, long mixes: anything over 12 minutes (or moved there by hand). */
+    val longPlays: Flow<List<TrackEntity>> = db.tracks().observeLong()
+    suspend fun longPlaysNow(): List<TrackEntity> = db.tracks().allLong()
+    suspend fun setKind(id: Long, kind: String) = db.tracks().setKind(id, kind)
+    suspend fun saveResume(id: Long, positionMs: Long) = db.tracks().setResume(id, positionMs.coerceAtLeast(0L))
     val genres: Flow<List<String>> = db.tracks().observeGenres()
     val playlists: Flow<List<PlaylistEntity>> = db.playlists().observeAll()
 
@@ -209,6 +214,7 @@ class LibraryRepository(
                             TrackEntity(
                                 mediaStoreId = msId, uri = uri, path = path, title = title, artist = artist,
                                 album = album, albumId = albumId, durationMs = duration, addedAt = added,
+                                kind = if (duration > TrackEntity.LONG_THRESHOLD_MS) TrackEntity.KIND_LONG else TrackEntity.KIND_MUSIC,
                             )
                         )
                         if (id > 0 && !genre.isNullOrBlank()) db.tracks().setGenres(id, genre.split('/', ';', ',').map { it.trim() })

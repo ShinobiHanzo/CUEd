@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TrackEntity::class, TrackGenreEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, PlayEventEntity::class, DownloadJobEntity::class, LyricsEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class CuedDatabase : RoomDatabase() {
@@ -26,9 +26,17 @@ abstract class CuedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tracks` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'music'")
+                db.execSQL("ALTER TABLE `tracks` ADD COLUMN `resumeMs` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE `tracks` SET `kind` = 'long' WHERE `durationMs` > ${TrackEntity.LONG_THRESHOLD_MS}")
+            }
+        }
+
         fun build(context: Context): CuedDatabase =
             Room.databaseBuilder(context, CuedDatabase::class.java, "cued.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
     }

@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import dev.cued.app.Graph
@@ -79,6 +80,8 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     val genreMap: StateFlow<Map<Long, List<String>>> = lib.genreMap.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val genres: StateFlow<List<String>> = lib.genres.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val playlists: StateFlow<List<PlaylistEntity>> = lib.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val longPlays: StateFlow<List<TrackEntity>> = lib.longPlays.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    fun setKind(trackId: Long, kind: String) = viewModelScope.launch { lib.setKind(trackId, kind) }
     val smartLists: StateFlow<Map<SmartList, List<TrackEntity>>> = lib.smartLists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val scanning: StateFlow<Boolean> = lib.scanning
     val analysisPending: StateFlow<Int> = graph.analysis.pending
@@ -130,6 +133,7 @@ data class PlayerUiState(
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val queue: List<MediaItem> = emptyList(),
     val queueIndex: Int = -1,
+    val speed: Float = 1f,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -178,6 +182,7 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
             repeatMode = p.repeatMode,
             queue = (0 until p.mediaItemCount).map { p.getMediaItemAt(it) },
             queueIndex = p.currentMediaItemIndex,
+            speed = p.playbackParameters.speed,
         )
     }
 
@@ -188,6 +193,8 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     fun next() = connection.player?.seekToNext()
     fun previous() = connection.player?.seekToPrevious()
     fun seekTo(ms: Long) = connection.player?.seekTo(ms)
+    fun seekBy(deltaMs: Long) { connection.player?.let { it.seekTo((it.currentPosition + deltaMs).coerceIn(0L, it.duration.takeIf { d -> d > 0 } ?: Long.MAX_VALUE)) } }
+    fun setSpeed(speed: Float) { connection.player?.playbackParameters = PlaybackParameters(speed.coerceIn(0.5f, 3f), 1f) }
     fun seekToQueueItem(index: Int) = connection.player?.seekTo(index, 0L)
     fun removeQueueItem(index: Int) = connection.player?.removeMediaItem(index)
     fun toggleShuffle() { connection.player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
