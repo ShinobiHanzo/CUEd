@@ -58,6 +58,12 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
             Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted,
         )
 
+        SectionHeader("Silence", "Skip the quiet bits")
+        ToggleRow("Skip silence", "Cuts long quiet stretches (silent intros, outros, hidden-track gaps) as the track plays. Applies instantly.", pb.skipSilence) { vm.setSkipSilence(it) }
+        LabeledSlider("Threshold", "${pb.silenceThresholdDb.toInt()} dBFS", pb.silenceThresholdDb, -80f..-20f, 11, enabled = pb.skipSilence) { vm.setSilenceThresholdDb(it) }
+        LabeledSlider("Tolerate up to", "${pb.silenceToleranceMs} ms", pb.silenceToleranceMs.toFloat(), 100f..3000f, 28, enabled = pb.skipSilence) { vm.setSilenceToleranceMs(it.toInt()) }
+        Text("Quiet stretches shorter than the tolerance are kept so phrases still breathe. Raise the threshold (towards -20) to be more aggressive; lower it (towards -80) if fade-outs get chopped.", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+
         SectionHeader("Scrubber", "Song-position control style")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             ScrubberMode.entries.forEachIndexed { i, m ->

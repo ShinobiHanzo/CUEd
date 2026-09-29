@@ -36,11 +36,18 @@ data class PlaybackSettings(
     val tempoMatchMs: Long,
     val maxStretchPercent: Float,
     val minBpmConfidence: Float,
+    /** Cut quiet stretches (intros, outros, hidden-track gaps) while playing. */
+    val skipSilence: Boolean,
+    /** Peak level in dBFS below which audio counts as silent. */
+    val silenceThresholdDb: Float,
+    /** Silence shorter than this is kept; only the excess is skipped. */
+    val silenceToleranceMs: Int,
 ) {
     companion object {
         val DEFAULT = PlaybackSettings(
             crossfadeEnabled = true, crossfadeMs = 6_000L, curve = CrossfadeCurve.EQUAL_POWER,
             tempoMatch = false, tempoMatchMs = 8_000L, maxStretchPercent = 8f, minBpmConfidence = 0.25f,
+            skipSilence = false, silenceThresholdDb = -50f, silenceToleranceMs = 700,
         )
     }
 }
@@ -70,6 +77,9 @@ class Settings(private val context: Context) {
         val crossfadeEnabled = booleanPreferencesKey("crossfade_enabled")
         val crossfadeMs = longPreferencesKey("crossfade_ms")
         val tempoMatchMs = longPreferencesKey("tempo_match_ms")
+        val skipSilence = booleanPreferencesKey("skip_silence")
+        val silenceThresholdDb = floatPreferencesKey("silence_threshold_db")
+        val silenceToleranceMs = intPreferencesKey("silence_tolerance_ms")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
@@ -95,6 +105,9 @@ class Settings(private val context: Context) {
             tempoMatchMs = p[K.tempoMatchMs] ?: PlaybackSettings.DEFAULT.tempoMatchMs,
             maxStretchPercent = p[K.maxStretch] ?: PlaybackSettings.DEFAULT.maxStretchPercent,
             minBpmConfidence = p[K.minConfidence] ?: PlaybackSettings.DEFAULT.minBpmConfidence,
+            skipSilence = p[K.skipSilence] ?: PlaybackSettings.DEFAULT.skipSilence,
+            silenceThresholdDb = p[K.silenceThresholdDb] ?: PlaybackSettings.DEFAULT.silenceThresholdDb,
+            silenceToleranceMs = p[K.silenceToleranceMs] ?: PlaybackSettings.DEFAULT.silenceToleranceMs,
         )
     }
 
@@ -127,6 +140,9 @@ class Settings(private val context: Context) {
     suspend fun setCrossfadeEnabled(on: Boolean) = context.dataStore.edit { it[K.crossfadeEnabled] = on }
     suspend fun setCrossfadeMs(ms: Long) = context.dataStore.edit { it[K.crossfadeMs] = ms.coerceIn(1_000L, 20_000L) }
     suspend fun setTempoMatchMs(ms: Long) = context.dataStore.edit { it[K.tempoMatchMs] = ms.coerceIn(2_000L, 32_000L) }
+    suspend fun setSkipSilence(on: Boolean) = context.dataStore.edit { it[K.skipSilence] = on }
+    suspend fun setSilenceThresholdDb(db: Float) = context.dataStore.edit { it[K.silenceThresholdDb] = db.coerceIn(-80f, -20f) }
+    suspend fun setSilenceToleranceMs(ms: Int) = context.dataStore.edit { it[K.silenceToleranceMs] = ms.coerceIn(100, 5_000) }
     suspend fun setCarMode(on: Boolean) = context.dataStore.edit { it[K.carMode] = on }
     suspend fun setAutoCarMode(on: Boolean) = context.dataStore.edit { it[K.autoCarMode] = on }
     suspend fun setCurve(curve: CrossfadeCurve) = context.dataStore.edit { it[K.curve] = curve.name }

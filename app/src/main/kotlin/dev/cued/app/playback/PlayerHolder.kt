@@ -20,11 +20,21 @@ class PlayerHolder(private val context: Context, private val graph: Graph) {
     @Volatile
     private var latestSettings = PlaybackSettings.DEFAULT
 
+    @Volatile private var playerCreated = false
+
     init {
-        graph.settings.playback.onEach { latestSettings = it }.launchIn(graph.appScope)
+        graph.settings.playback.onEach { s ->
+            latestSettings = s
+            if (playerCreated) player.applySettings(s)
+        }.launchIn(graph.appScope)
     }
 
+
     val player: CrossfadePlayer by lazy {
+        buildPlayer().also { it.applySettings(latestSettings); playerCreated = true }
+    }
+
+    private fun buildPlayer(): CrossfadePlayer =
         CrossfadePlayer(
             context = context,
             spectrumBus = spectrumBus,
@@ -39,5 +49,4 @@ class PlayerHolder(private val context: Context, private val graph: Graph) {
                 mediaId.toLongOrNull()?.let { id -> graph.appScope.launch { graph.library.recordPlayback(id, fraction) } }
             },
         )
-    }
 }

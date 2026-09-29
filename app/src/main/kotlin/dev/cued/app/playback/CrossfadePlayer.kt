@@ -15,7 +15,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
-import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -76,6 +75,7 @@ class CrossfadePlayer(
 
     private inner class Deck(val index: Int) {
         val player: ExoPlayer
+        val silenceSkip = SilenceSkipProcessor()
         var gain = 1f
         var speed = 1f
         var item: MediaItem? = null
@@ -84,7 +84,7 @@ class CrossfadePlayer(
             val renderers = object : DefaultRenderersFactory(context) {
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                     DefaultAudioSink.Builder(context)
-                        .setAudioProcessors(arrayOf<AudioProcessor>(SpectrumTapProcessor(index, spectrumBus)))
+                        .setAudioProcessorChain(CuedAudioProcessorChain(silenceSkip, SpectrumTapProcessor(index, spectrumBus)))
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                         .build()
@@ -605,6 +605,15 @@ class CrossfadePlayer(
         }
         transition = null
         _transitionInfo.value = null
+    }
+
+    /** Pushes live-tunable settings (silence skipping) into both decks. Safe to call from any thread. */
+    fun applySettings(s: PlaybackSettings) {
+        for (d in decks) {
+            d.silenceSkip.enabled = s.skipSilence
+            d.silenceSkip.thresholdDb = s.silenceThresholdDb
+            d.silenceSkip.toleranceMs = s.silenceToleranceMs
+        }
     }
 
     /** Public helper for the UI: force the next track to start blending now. */

@@ -14,6 +14,7 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 |---|---|---|
 | Playback | Two ExoPlayer decks blended by a `SimpleBasePlayer`; standard crossfade with equal-power / linear / smooth curves, 1–20 s, or gapless | `app/.../playback/CrossfadePlayer.kt` |
 | Tempo-match (separate mode, off by default) | "Closest common factor": the incoming track is matched at 1:1, 2:1, 1:2, 3:2, 2:3, 4:3, 3:4, 3:1 or 1:3, whichever needs the least stretch; both decks glide to the incoming tempo; blend starts on a beat; falls back to the standard crossfade when tempos don't relate | `core/.../mix/TempoMatcher.kt`, `Crossfade.kt` |
+| Silence skip | Optional: cuts quiet stretches longer than a tolerance (threshold in dBFS), position stays accurate because dropped frames are reported to the audio sink | `app/.../playback/SilenceSkipProcessor.kt` |
 | Car mode | Sidebar toggle (or automatic on car UI mode): one screen of oversized controls, quick-play tiles, voice button, spoken replies. Android Auto browse tree via `MediaLibraryService` | `ui/screens/CarModeScreen.kt`, `playback/LibraryTree.kt` |
 | Voice | In-app mic, Google Assistant and Android Auto ("play <x> on CUEd"). Rule-based command parser, no model | `core/.../voice/VoiceCommands.kt`, `app/.../playback/VoiceResolver.kt` |
 | BPM detection | Onset-energy autocorrelation with a tempo prior, octave-error handling and beat-phase estimate. Runs on-device, one track at a time | `core/.../dsp/BpmDetector.kt` |

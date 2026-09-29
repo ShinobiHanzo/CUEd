@@ -45,6 +45,16 @@ Audio focus and "becoming noisy" are handled once for the pair, not per deck.
 slightly ahead of the speaker; the UI reads frames from `visualDelayMs` ago to compensate
 (Settings → Scrubber). This is why the live view needs no microphone permission.
 
+## Silence skipping
+
+`CuedAudioProcessorChain` replaces ExoPlayer's default chain per deck:
+silence skip → spectrum tap → Sonic time-stretch. `SilenceSkipProcessor` keeps the
+first *tolerance* milliseconds of any quiet run (peak below the dBFS threshold) and
+drops the rest until sound returns. It reports dropped frames through
+`getSkippedOutputFrameCount`, which is how the sink keeps `currentPosition` truthful,
+so the scrubber, the crossfade arming point and play-history fractions are unaffected.
+Settings apply live; no reconfiguration.
+
 ## Analysis
 
 `AnalysisQueue` decodes with `MediaCodec` to mono 22.05 kHz, streams a static spectrogram

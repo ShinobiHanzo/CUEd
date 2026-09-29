@@ -359,6 +359,9 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setCrossfadeEnabled(on: Boolean) = viewModelScope.launch { graph.settings.setCrossfadeEnabled(on) }
     fun setCrossfadeMs(ms: Long) = viewModelScope.launch { graph.settings.setCrossfadeMs(ms) }
     fun setTempoMatchMs(ms: Long) = viewModelScope.launch { graph.settings.setTempoMatchMs(ms) }
+    fun setSkipSilence(on: Boolean) = viewModelScope.launch { graph.settings.setSkipSilence(on) }
+    fun setSilenceThresholdDb(db: Float) = viewModelScope.launch { graph.settings.setSilenceThresholdDb(db) }
+    fun setSilenceToleranceMs(ms: Int) = viewModelScope.launch { graph.settings.setSilenceToleranceMs(ms) }
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }
