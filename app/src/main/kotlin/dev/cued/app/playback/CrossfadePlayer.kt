@@ -113,7 +113,7 @@ class CrossfadePlayer(
             player.playWhenReady = false
         }
 
-        fun applyGain(g: Float) { gain = g; player.volume = (g * masterVolume).coerceIn(0f, 1f); spectrumBus.applyGain(index, g) }
+        fun applyGain(g: Float) { gain = g; player.volume = (g * masterVolume).coerceIn(0f, 1f); spectrumBus.setGain(index, g) }
         fun applySpeed(s: Float) {
             if (kotlin.math.abs(speed - s) < 0.0005f) return
             speed = s
