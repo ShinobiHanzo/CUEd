@@ -6,9 +6,6 @@ import android.util.Log
 import dev.cued.app.data.db.CuedDatabase
 import dev.cued.app.data.db.TrackEntity
 import dev.cued.core.dsp.BpmDetector
-import dev.cued.core.dsp.Spectrogram
-import dev.cued.core.dsp.SpectrogramImage
-import dev.cued.core.dsp.StreamingSpectrogram
 import dev.cued.core.mix.TrackTempo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Serial background analyser. One track at a time so an entry-level phone
+ * Serial background tempo analyser. One track at a time so an entry-level phone
  * stays responsive; the playback engine can jump the queue for the track
  * that is about to be mixed in.
  */
@@ -32,7 +29,6 @@ class AnalysisQueue(
     private val db: CuedDatabase,
     private val scope: CoroutineScope,
 ) {
-    val store = SpectrogramStore(context)
     private val decoder = AudioDecoder(context)
 
     private val mutex = Mutex()
@@ -105,41 +101,26 @@ class AnalysisQueue(
 
     private suspend fun analyse(trackId: Long): TrackEntity? = withContext(Dispatchers.Default) {
         val track = db.tracks().byId(trackId) ?: return@withContext null
-        val spectrogram = Spectrogram(fftSize = FFT_SIZE, hopSize = HOP, bands = BANDS, sampleRate = RATE, minHz = 30f, maxHz = RATE / 2f)
-        val columns = ArrayList<FloatArray>(8192)
-        val streaming = StreamingSpectrogram(spectrogram) { columns += it }
-        // BPM works on a further-decimated copy (about 11 kHz), capped so long mixes stay cheap.
-        var bpmPcm = FloatArray(RATE / 2 * 60)
-        var bpmCount = 0
-        var carry = 0f; var carryN = 0
-        val bpmCap = RATE / 2 * BPM_MAX_SECONDS
-        val info = decoder.decode(Uri.parse(track.uri), RATE, MAX_SECONDS) { samples, count ->
-            streaming.push(samples, count)
-            var i = 0
-            while (i < count && bpmCount < bpmCap) {
-                carry += samples[i]; carryN++
-                if (carryN == 2) {
-                    if (bpmCount == bpmPcm.size) bpmPcm = bpmPcm.copyOf(bpmPcm.size * 2)
-                    bpmPcm[bpmCount++] = carry / 2f
-                    carry = 0f; carryN = 0
-                }
-                i++
+        // Tempo only: decode to ~11 kHz mono, capped so long mixes stay cheap.
+        var pcm = FloatArray(RATE * 60)
+        var count = 0
+        val cap = RATE * BPM_MAX_SECONDS
+        val info = decoder.decode(Uri.parse(track.uri), RATE, BPM_MAX_SECONDS) { samples, n ->
+            val take = minOf(n, cap - count)
+            if (take > 0) {
+                if (count + take > pcm.size) pcm = pcm.copyOf(maxOf(pcm.size * 2, count + take))
+                System.arraycopy(samples, 0, pcm, count, take)
+                count += take
             }
         }
-        streaming.finish()
-        val bpmRate = info.outputRate / 2
-        val bpm = BpmDetector(sampleRate = bpmRate, hopSize = maxOf(64, bpmRate / 86)).analyse(bpmPcm.copyOf(bpmCount))
-
-        val image = SpectrogramImage(columns.size, BANDS, FloatArray(columns.size * BANDS).also { data ->
-            columns.forEachIndexed { c, col -> System.arraycopy(col, 0, data, c * BANDS, BANDS) }
-        }).downsample(STORE_COLUMNS)
-        val file = store.save(trackId, image)
+        val rate = info.outputRate
+        val bpm = BpmDetector(sampleRate = rate, hopSize = maxOf(64, rate / 86)).analyse(pcm.copyOf(count))
         db.tracks().setAnalysis(
             trackId,
             bpm = bpm.bpm.takeIf { it > 0f },
             confidence = bpm.confidence,
             firstBeat = bpm.firstBeatSec,
-            spectrogramPath = file.absolutePath,
+            spectrogramPath = null,
             at = System.currentTimeMillis(),
         )
         db.tracks().byId(trackId)
@@ -147,12 +128,7 @@ class AnalysisQueue(
 
     companion object {
         private const val TAG = "AnalysisQueue"
-        const val RATE = 22_050
-        const val FFT_SIZE = 1024
-        const val HOP = 512
-        const val BANDS = 64
-        const val STORE_COLUMNS = 512
-        const val MAX_SECONDS = 60 * 30
+        const val RATE = 11_025
         const val BPM_MAX_SECONDS = 60 * 8
 
         fun TrackEntity.toTempo(): TrackTempo? {

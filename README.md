@@ -18,7 +18,9 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Car mode | Sidebar toggle (or automatic on car UI mode): one screen of oversized controls, quick-play tiles, voice button, spoken replies. Android Auto browse tree via `MediaLibraryService` | `ui/screens/CarModeScreen.kt`, `playback/LibraryTree.kt` |
 | Voice | In-app mic, Google Assistant and Android Auto ("play <x> on CUEd"). Rule-based command parser, no model | `core/.../voice/VoiceCommands.kt`, `app/.../playback/VoiceResolver.kt` |
 | BPM detection | Onset-energy autocorrelation with a tempo prior, octave-error handling and beat-phase estimate. Runs on-device, one track at a time | `core/.../dsp/BpmDetector.kt` |
-| Spectrograph | **Static**: whole-track log-band spectrogram rendered as the scrubber. **Reactive**: live FFT tapped from ExoPlayer's audio pipeline (no mic permission). **Standard**: plain bar. Toggle on the Now Playing screen | `core/.../dsp/Spectrogram.kt`, `app/.../playback/SpectrumTapProcessor.kt`, `ui/components/PositionScrubber.kt` |
+| Spectrograph | Live FFT tapped from ExoPlayer's audio pipeline (no mic permission) drawn as the scrubber, or a plain bar. Toggle on the Now Playing screen | `core/.../dsp/Spectrogram.kt`, `app/.../playback/SpectrumTapProcessor.kt`, `ui/components/PositionScrubber.kt` |
+| Gestures | Artwork: swipe for next/previous, tap play/pause, double-tap favourite, hold for the menu. Mini player: swipe to skip | `ui/screens/NowPlayingScreen.kt`, `ui/components/MiniPlayer.kt` |
+| Lyrics | Embedded ID3 lyrics → `.lrc`/`.txt` sidecar → lrclib.net (toggle). Synced LRC scrolls with the song and seeks on tap; bulk download for the library | `core/.../lyrics/`, `app/.../lyrics/`, `ui/components/LyricsPanel.kt` |
 | Library | MediaStore scan into Room; favourites; free-text genre labels (many per track); play/skip history | `app/.../data` |
 | Smart lists | Trending (recency-weighted plays), Newly downloaded, Unplayed, Forgotten, Favourites, Recommended (genre/artist/tempo/co-play heuristics, with reasons shown) | `core/.../reco/SmartLists.kt`, `Recommender.kt` |
 | Playlists | Create, rename, reorder, save any smart list or genre or "more like this" as a playlist | `ui/screens/PlaylistsScreen.kt` |
@@ -52,6 +54,7 @@ APK and publishes it on the Releases page.
 - [Downloading with spotdl](docs/downloading.md): Termux vs companion setup
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
+- [Lyrics](docs/lyrics.md): where lyrics come from and what goes online
 
 ## Status
 

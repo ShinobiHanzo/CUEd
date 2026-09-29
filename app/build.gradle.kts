@@ -55,7 +55,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     lint {
         // Media3 marks most of its surface @UnstableApi; the app opts in at the use sites that matter.

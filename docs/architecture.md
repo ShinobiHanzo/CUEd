@@ -57,10 +57,9 @@ Settings apply live; no reconfiguration.
 
 ## Analysis
 
-`AnalysisQueue` decodes with `MediaCodec` to mono 22.05 kHz, streams a static spectrogram
-(1024-pt FFT, 64 log bands, downsampled to 512 columns, ~32 KB on disk) and detects BPM
-from an 11 kHz copy of the first 8 minutes. One track at a time, background priority, but
-the player can push a track to the front.
+`AnalysisQueue` decodes with `MediaCodec` to mono ~11 kHz and detects BPM from the first
+8 minutes. One track at a time, background priority, but the player can push a track to
+the front when it is about to be mixed in.
 
 ## Data
 

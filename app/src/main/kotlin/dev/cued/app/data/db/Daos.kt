@@ -188,3 +188,21 @@ interface DownloadJobDao {
     @Query("DELETE FROM download_jobs WHERE status IN ('DONE','FAILED')")
     suspend fun clearFinished()
 }
+
+@Dao
+interface LyricsDao {
+    @Query("SELECT * FROM lyrics WHERE trackId = :trackId")
+    fun observe(trackId: Long): Flow<LyricsEntity?>
+
+    @Query("SELECT * FROM lyrics WHERE trackId = :trackId")
+    suspend fun get(trackId: Long): LyricsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(l: LyricsEntity)
+
+    @Query("SELECT t.id FROM tracks t LEFT JOIN lyrics l ON l.trackId = t.id WHERE t.missing = 0 AND (l.trackId IS NULL OR (l.source = 'none' AND l.fetchedAt < :retryBefore))")
+    suspend fun trackIdsWithoutLyrics(retryBefore: Long): List<Long>
+
+    @Query("SELECT COUNT(*) FROM lyrics WHERE source != 'none'")
+    fun observeCount(): Flow<Int>
+}

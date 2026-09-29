@@ -30,7 +30,11 @@ import dev.cued.app.playback.VoiceResolver
 import dev.cued.core.voice.VoiceCommands
 import dev.cued.app.data.CarSettings
 import dev.cued.app.share.QrCodes
-import dev.cued.core.dsp.SpectrogramImage
+import dev.cued.app.data.db.LyricsEntity
+import dev.cued.app.lyrics.LyricsRepository
+import dev.cued.app.data.LyricsSettings
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import dev.cued.core.mix.CrossfadeCurve
 import dev.cued.core.mix.TrackTempo
 import dev.cued.core.share.SharePayload
@@ -223,17 +227,31 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     fun setAutoCarMode(on: Boolean) = viewModelScope.launch { graph.settings.setAutoCarMode(on) }
     fun exitCarModeForNow() { carOverride.value = false; viewModelScope.launch { graph.settings.setCarMode(false) } }
 
-    private val spectroCache = HashMap<Long, SpectrogramImage?>()
-    /** Loads a track's static spectrogram (requesting analysis if it does not exist yet). */
-    suspend fun spectrogram(trackId: Long): SpectrogramImage? {
-        spectroCache[trackId]?.let { return it }
-        val t = graph.library.track(trackId) ?: return null
-        val path = t.spectrogramPath
-        if (path == null) { graph.analysis.request(trackId, urgent = true); return null }
-        val img = withContext(Dispatchers.IO) { graph.analysis.store.load(path) }
-        if (spectroCache.size > 8) spectroCache.clear()
-        spectroCache[trackId] = img
-        return img
+    // ---- Lyrics ----
+    val showLyrics = MutableStateFlow(false)
+    val lyricsSettings: StateFlow<LyricsSettings> = graph.settings.lyrics.stateIn(viewModelScope, SharingStarted.Eagerly, LyricsSettings(true, true))
+    val lyrics: StateFlow<LyricsEntity?> = _state.map { it.trackId }.distinctUntilChanged()
+        .flatMapLatest { id -> if (id == null) flowOf(null) else graph.lyrics.observe(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    private val _lyricsBusy = MutableStateFlow(false)
+    val lyricsBusy: StateFlow<Boolean> = _lyricsBusy
+    init {
+        // Auto-lookup when the track changes, if allowed.
+        viewModelScope.launch {
+            _state.map { it.trackId }.distinctUntilChanged().collect { id ->
+                if (id == null) return@collect
+                val s = graph.settings.lyricsNow()
+                if (s.autoFetch) launch(Dispatchers.IO) { runCatching { graph.lyrics.ensure(id, allowOnline = s.fetchOnline) } }
+            }
+        }
+    }
+    fun fetchLyricsNow() {
+        val id = _state.value.trackId ?: return
+        viewModelScope.launch {
+            _lyricsBusy.value = true
+            runCatching { graph.lyrics.refresh(id) }
+            _lyricsBusy.value = false
+        }
     }
 
     override fun onCleared() { connection.player?.removeListener(listener); connection.disconnect() }
@@ -362,6 +380,13 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setSkipSilence(on: Boolean) = viewModelScope.launch { graph.settings.setSkipSilence(on) }
     fun setSilenceThresholdDb(db: Float) = viewModelScope.launch { graph.settings.setSilenceThresholdDb(db) }
     fun setSilenceToleranceMs(ms: Int) = viewModelScope.launch { graph.settings.setSilenceToleranceMs(ms) }
+    val lyrics: StateFlow<LyricsSettings> = graph.settings.lyrics.stateIn(viewModelScope, SharingStarted.Eagerly, LyricsSettings(true, true))
+    val lyricsBulk: StateFlow<LyricsRepository.BulkProgress?> = graph.lyrics.bulk
+    val lyricsCount: StateFlow<Int> = graph.lyrics.count.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    fun setLyricsOnline(on: Boolean) = viewModelScope.launch { graph.settings.setLyricsOnline(on) }
+    fun setLyricsAuto(on: Boolean) = viewModelScope.launch { graph.settings.setLyricsAuto(on) }
+    fun fetchAllLyrics() = graph.lyrics.fetchMissingAsync()
+    fun cancelBulkLyrics() = graph.lyrics.cancelBulk()
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }

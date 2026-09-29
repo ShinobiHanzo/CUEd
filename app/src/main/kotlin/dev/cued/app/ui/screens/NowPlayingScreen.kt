@@ -1,6 +1,17 @@
 package dev.cued.app.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import dev.cued.app.ui.components.LyricsPanel
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +78,6 @@ import dev.cued.app.ui.components.formatMs
 import dev.cued.app.ui.theme.Amber
 import dev.cued.app.ui.theme.Muted
 import dev.cued.app.ui.theme.Teal
-import dev.cued.core.dsp.SpectrogramImage
 
 @OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
 @Composable
@@ -77,14 +87,16 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
     val transition by pvm.transition.collectAsState()
     val tempo by pvm.currentTempo.collectAsState()
     val ui by pvm.uiSettings.collectAsState()
-    var spectro by remember { mutableStateOf<SpectrogramImage?>(null) }
+    val lyrics by pvm.lyrics.collectAsState()
+    val lyricsBusy by pvm.lyricsBusy.collectAsState()
+    val showLyrics by pvm.showLyrics.collectAsState()
+    val lyricsSettings by pvm.lyricsSettings.collectAsState()
     var showQueue by remember { mutableStateOf(false) }
 
-    // Load (or request) the static spectrogram whenever the track or its analysis changes.
-    LaunchedEffect(state.trackId, track?.analysedAt, ui.scrubberMode) {
-        val id = state.trackId
-        spectro = if (id != null && ui.scrubberMode == ScrubberMode.STATIC_SPECTROGRAM) pvm.spectrogram(id) else null
-    }
+    // Artwork gestures: swipe to change track, tap to play/pause, double-tap to favourite, hold for the menu.
+    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    val artOffset by animateFloatAsState(targetValue = dragX, label = "artSwipe")
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -92,11 +104,43 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
             Spacer(Modifier.weight(1f))
             Text("Now playing", style = MaterialTheme.typography.labelLarge, color = Muted)
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { pvm.showLyrics.value = !showLyrics }) { Icon(Icons.Default.Lyrics, contentDescription = "Lyrics", tint = if (showLyrics) Teal else Muted) }
             IconButton(onClick = { showQueue = true }) { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue") }
             IconButton(onClick = { state.trackId?.let(onMore) }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
         }
         Spacer(Modifier.height(12.dp))
-        AlbumArt(track?.albumId, Modifier.fillMaxWidth(0.8f).aspectRatio(1f), corner = 20)
+        Box(
+            Modifier.fillMaxWidth(0.8f).aspectRatio(1f)
+                .offset { IntOffset(artOffset.roundToInt(), 0) }
+                .pointerInput(state.trackId) {
+                    detectTapGestures(
+                        onTap = { pvm.togglePlay() },
+                        onDoubleTap = { track?.let { lvm.toggleFavourite(it) } },
+                        onLongPress = { state.trackId?.let(onMore) },
+                    )
+                }
+                .pointerInput(state.trackId) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            when {
+                                dragX < -swipeThreshold -> pvm.next()
+                                dragX > swipeThreshold -> pvm.previous()
+                            }
+                            dragX = 0f
+                        },
+                        onDragCancel = { dragX = 0f },
+                    ) { change, dx -> dragX += dx; change.consume() }
+                },
+        ) {
+            if (showLyrics) {
+                LyricsPanel(
+                    lyrics = lyrics, positionMs = state.positionMs, busy = lyricsBusy, onlineAllowed = lyricsSettings.fetchOnline,
+                    onSeek = { pvm.seekTo(it) }, onFetch = { pvm.fetchLyricsNow() }, modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                AlbumArt(track?.albumId, Modifier.fillMaxSize(), corner = 20)
+            }
+        }
         Spacer(Modifier.height(20.dp))
         Text(state.title.ifBlank { "Nothing playing" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(state.artist, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -108,7 +152,6 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
             mode = ui.scrubberMode,
             positionMs = state.positionMs,
             durationMs = state.durationMs,
-            spectrogram = spectro,
             bus = pvm.spectrumBus,
             visualDelayMs = ui.visualDelayMs,
             onSeek = { pvm.seekTo(it) },
@@ -124,7 +167,7 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
                 SegmentedButton(
                     selected = ui.scrubberMode == m, onClick = { pvm.setScrubberMode(m) },
                     shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
-                    label = { Text(when (m) { ScrubberMode.STANDARD -> "Bar"; ScrubberMode.STATIC_SPECTROGRAM -> "Static"; ScrubberMode.REACTIVE_SPECTROGRAM -> "Live" }, maxLines = 1) },
+                    label = { Text(when (m) { ScrubberMode.STANDARD -> "Bar"; ScrubberMode.REACTIVE_SPECTROGRAM -> "Live spectrograph" }, maxLines = 1) },
                 )
             }
         }

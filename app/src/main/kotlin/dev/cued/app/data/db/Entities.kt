@@ -90,3 +90,13 @@ data class DownloadJobEntity(
     val finishedAt: Long? = null,
     val remoteJobId: String? = null,
 )
+
+/** Lyrics for a track. [synced] is LRC text when available; [source] is embedded / sidecar / lrclib / none. */
+@Entity(tableName = "lyrics")
+data class LyricsEntity(
+    @PrimaryKey val trackId: Long,
+    val plain: String?,
+    val synced: String?,
+    val source: String,
+    val fetchedAt: Long,
+)

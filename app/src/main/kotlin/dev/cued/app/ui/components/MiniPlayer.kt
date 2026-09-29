@@ -19,7 +19,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,9 +37,20 @@ import dev.cued.app.ui.theme.Muted
 import dev.cued.app.ui.theme.Teal
 
 @Composable
-fun MiniPlayer(state: PlayerUiState, albumId: Long?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit) {
+fun MiniPlayer(state: PlayerUiState, albumId: Long?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit = {}) {
     if (state.trackId == null) return
-    Column(Modifier.fillMaxWidth().background(Ink2).clickable(onClick = onOpen)) {
+    // Swipe left/right on the strip to skip; tap opens the player.
+    val threshold = with(LocalDensity.current) { 64.dp.toPx() }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    Column(
+        Modifier.fillMaxWidth().background(Ink2).clickable(onClick = onOpen)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = { if (dragX < -threshold) onNext() else if (dragX > threshold) onPrevious(); dragX = 0f },
+                    onDragCancel = { dragX = 0f },
+                ) { change, dx -> dragX += dx; change.consume() }
+            },
+    ) {
         LinearProgressIndicator(
             progress = { if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f },
             modifier = Modifier.fillMaxWidth().height(2.dp), color = Teal, trackColor = Ink2,

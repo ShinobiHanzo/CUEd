@@ -34,6 +34,9 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
     val pb by vm.playback.collectAsState()
     val ui by vm.ui.collectAsState()
     val pending by vm.analysisPending.collectAsState()
+    val ly by vm.lyrics.collectAsState()
+    val bulk by vm.lyricsBulk.collectAsState()
+    val lyricsCount by vm.lyricsCount.collectAsState()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         SectionHeader("Crossfade", "Standard volume blend between tracks")
@@ -68,12 +71,26 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             ScrubberMode.entries.forEachIndexed { i, m ->
                 SegmentedButton(selected = ui.scrubberMode == m, onClick = { vm.setScrubberMode(m) }, shape = SegmentedButtonDefaults.itemShape(i, ScrubberMode.entries.size)) {
-                    Text(when (m) { ScrubberMode.STANDARD -> "Bar"; ScrubberMode.STATIC_SPECTROGRAM -> "Static"; ScrubberMode.REACTIVE_SPECTROGRAM -> "Live" }, maxLines = 1)
+                    Text(when (m) { ScrubberMode.STANDARD -> "Bar"; ScrubberMode.REACTIVE_SPECTROGRAM -> "Live spectrograph" }, maxLines = 1)
                 }
             }
         }
         LabeledSlider("Visual delay", "${ui.visualDelayMs} ms", ui.visualDelayMs.toFloat(), 0f..400f, 39) { vm.setVisualDelay(it.toInt()) }
         Text("The live spectrograph taps audio before it reaches the speaker; raise this if the bars lead the sound (Bluetooth adds a lot).", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+
+        SectionHeader("Lyrics", "Embedded tag → .lrc beside the file → lrclib.net")
+        ToggleRow("Fetch from lrclib.net", "Open, key-less lyrics database. The only host CUEd contacts outside your LAN, and only for tracks with nothing embedded.", ly.fetchOnline) { vm.setLyricsOnline(it) }
+        ToggleRow("Look up automatically", "When a track starts playing. Off = only when you tap Lyrics in the player.", ly.autoFetch) { vm.setLyricsAuto(it) }
+        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val b = bulk
+            if (b?.running == true) {
+                TextButton(onClick = { vm.cancelBulkLyrics() }) { Text("Stop") }
+                Text("${b.done}/${b.total}  ·  ${b.found} found", color = Muted)
+            } else {
+                TextButton(onClick = { vm.fetchAllLyrics() }) { Text("Download lyrics for whole library") }
+                Text(if (b != null) "done: ${b.found} of ${b.total} found" else "$lyricsCount tracks have lyrics", color = Muted)
+            }
+        }
 
         SectionHeader("Library", if (pending > 0) "$pending track(s) waiting for analysis" else "Tempo + spectrogram analysis runs on-device, one track at a time")
         Row(Modifier.padding(horizontal = 8.dp)) {

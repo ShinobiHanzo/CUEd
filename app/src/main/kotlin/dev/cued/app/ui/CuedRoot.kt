@@ -200,7 +200,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         },
         bottomBar = {
             if (showTabs) Column {
-                MiniPlayer(player, currentTrack?.albumId, onOpen = { nav.navigate("nowplaying") }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() })
+                MiniPlayer(player, currentTrack?.albumId, onOpen = { nav.navigate("nowplaying") }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onPrevious = { pvm.previous() })
                 NavigationBar {
                     Tab.entries.forEach { t ->
                         NavigationBarItem(

@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-enum class ScrubberMode { STANDARD, STATIC_SPECTROGRAM, REACTIVE_SPECTROGRAM }
+enum class ScrubberMode { STANDARD, REACTIVE_SPECTROGRAM }
 enum class DownloadBackend { TERMUX, COMPANION }
 
 /**
@@ -52,6 +52,13 @@ data class PlaybackSettings(
     }
 }
 
+data class LyricsSettings(
+    /** Allowed to ask lrclib.net when nothing is embedded or beside the file. */
+    val fetchOnline: Boolean,
+    /** Look lyrics up automatically when a track starts playing. */
+    val autoFetch: Boolean,
+)
+
 data class CarSettings(
     /** Manual toggle from the sidebar. */
     val carMode: Boolean,
@@ -80,6 +87,8 @@ class Settings(private val context: Context) {
         val skipSilence = booleanPreferencesKey("skip_silence")
         val silenceThresholdDb = floatPreferencesKey("silence_threshold_db")
         val silenceToleranceMs = intPreferencesKey("silence_tolerance_ms")
+        val lyricsOnline = booleanPreferencesKey("lyrics_online")
+        val lyricsAuto = booleanPreferencesKey("lyrics_auto")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
@@ -110,6 +119,13 @@ class Settings(private val context: Context) {
             silenceToleranceMs = p[K.silenceToleranceMs] ?: PlaybackSettings.DEFAULT.silenceToleranceMs,
         )
     }
+
+    val lyrics: Flow<LyricsSettings> = context.dataStore.data.map { p ->
+        LyricsSettings(fetchOnline = p[K.lyricsOnline] ?: true, autoFetch = p[K.lyricsAuto] ?: true)
+    }
+    suspend fun lyricsNow() = lyrics.first()
+    suspend fun setLyricsOnline(on: Boolean) = context.dataStore.edit { it[K.lyricsOnline] = on }
+    suspend fun setLyricsAuto(on: Boolean) = context.dataStore.edit { it[K.lyricsAuto] = on }
 
     val car: Flow<CarSettings> = context.dataStore.data.map { p ->
         CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true)
