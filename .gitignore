@@ -15,6 +15,7 @@ captures/
 *.jks
 *.keystore
 !debug.keystore
+!keystore/cued-dev.jks
 
 # OS
 .DS_Store

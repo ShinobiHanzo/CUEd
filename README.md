@@ -24,6 +24,12 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Downloads | `spotdl` via **Termux** on the phone, or via the **companion server** on a laptop/Pi over LAN. Spotify/YouTube links or search text; share-sheet integration | `app/.../download`, `tools/spotdl-server` |
 | Sharing | QR code + NFC (host-card emulation, phone-to-phone, plus NDEF stickers) carrying a `cued://share?…` payload with the source link, a local file URL and an APK URL. Local HTTP server serves the track and the app itself | `app/.../share`, `core/.../share/SharePayload.kt` |
 
+## Get the app
+
+Download the latest APK from the **[Releases](https://github.com/ShinobiHanzo/CUEd/releases)** page
+and sideload it. Pre-releases are signed with the public dev key described in
+[`keystore/README.md`](keystore/README.md); only install builds from that page.
+
 ## Building
 
 Requirements: JDK 17+, Android SDK (API 35), Gradle wrapper included.
@@ -35,6 +41,8 @@ Requirements: JDK 17+, Android SDK (API 35), Gradle wrapper included.
 
 `:app` is skipped automatically when no SDK is configured, so `:core` builds anywhere.
 CI (`.github/workflows/android.yml`) runs both and uploads a debug APK on every push.
+Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`, which builds a signed release
+APK and publishes it on the Releases page.
 
 ## Docs
 

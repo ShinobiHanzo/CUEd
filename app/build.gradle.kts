@@ -14,16 +14,34 @@ android {
         applicationId = "dev.cued.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The release workflow passes these from the git tag / run number.
+        versionCode = (System.getenv("CUED_VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("CUED_VERSION_NAME") ?: "0.1.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        // Real key from CI secrets when present; otherwise the public dev key in
+        // keystore/ so pre-release builds install and upgrade over each other.
+        // See keystore/README.md.
+        create("release") {
+            val ksPath = System.getenv("CUED_KEYSTORE_PATH") ?: "$rootDir/keystore/cued-dev.jks"
+            storeFile = file(ksPath)
+            storePassword = System.getenv("CUED_KEYSTORE_PASSWORD") ?: "cued-dev"
+            keyAlias = System.getenv("CUED_KEY_ALIAS") ?: "cued-dev"
+            keyPassword = System.getenv("CUED_KEY_PASSWORD") ?: "cued-dev"
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Minification is off until the app has been exercised on real devices;
+            // an unshrunk APK is a few MB larger but cannot be broken by R8 stripping
+            // something reflection-based. Flip both to true once that's been checked.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"

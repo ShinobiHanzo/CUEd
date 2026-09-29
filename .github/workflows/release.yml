@@ -1,0 +1,107 @@
+name: Release
+
+# Push a tag like v0.1.0 (or run manually with a tag name) to build a signed
+# release APK and publish it on the GitHub Releases page.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Decode signing key (if secrets are configured)
+        id: key
+        env:
+          KS_B64: ${{ secrets.CUED_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+            echo "signed=private" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run core tests
+        run: ./gradlew :core:test --no-daemon
+
+      - name: Assemble release APK
+        env:
+          CUED_VERSION_NAME: ${{ steps.ver.outputs.name }}
+          CUED_VERSION_CODE: ${{ steps.ver.outputs.code }}
+          CUED_KEYSTORE_PATH: ${{ steps.key.outputs.path }}
+          CUED_KEYSTORE_PASSWORD: ${{ secrets.CUED_KEYSTORE_PASSWORD }}
+          CUED_KEY_ALIAS: ${{ secrets.CUED_KEY_ALIAS }}
+          CUED_KEY_PASSWORD: ${{ secrets.CUED_KEY_PASSWORD }}
+        run: |
+          # Empty env vars would override the dev-key fallbacks; unset them when no secret is set.
+          for v in CUED_KEYSTORE_PATH CUED_KEYSTORE_PASSWORD CUED_KEY_ALIAS CUED_KEY_PASSWORD; do
+            [ -z "${!v}" ] && unset $v || true
+          done
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/CUEd-${{ steps.ver.outputs.tag }}.apk"
+          (cd dist && sha256sum "CUEd-${{ steps.ver.outputs.tag }}.apk" > "CUEd-${{ steps.ver.outputs.tag }}.apk.sha256")
+          cat dist/*.sha256
+
+      - name: Write release notes
+        run: |
+          {
+            echo "## CUEd ${{ steps.ver.outputs.tag }}"
+            echo
+            echo "Offline Android music player: two-deck crossfade, optional tempo-matched blends, spectrograph scrubber, smart lists, spotdl downloads (Termux or LAN companion), QR/NFC/local sharing, car mode, voice control."
+            echo
+            echo "**Install:** download the APK below, open it on the phone, allow installs from your browser/file manager. minSdk 26 (Android 8.0)."
+            echo
+            if [ "${{ steps.key.outputs.signed }}" = "dev" ]; then
+              echo "> ⚠️ **Pre-release, signed with the public dev key** in \`keystore/cued-dev.jks\`. That key only makes builds upgrade over each other; it does not prove who built this file. Only install APKs from this Releases page. See \`keystore/README.md\` to switch to a private key."
+            else
+              echo "Signed with the project's private release key."
+            fi
+            echo
+            echo "SHA-256 of the APK is in the attached \`.sha256\` file."
+            echo
+            echo "This build has been compiled and unit-tested in CI but not yet run on a device; please report what breaks."
+          } > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: CUEd ${{ steps.ver.outputs.tag }}
+          body_path: notes.md
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            dist/*.apk
+            dist/*.sha256
