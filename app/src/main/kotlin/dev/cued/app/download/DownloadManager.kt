@@ -108,9 +108,13 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             // 1b. Built-in backend expands Spotify/YouTube albums and playlists itself.
             val native = if (backend == DownloadBackend.BUILT_IN) dev.cued.app.download.native.NativeDownloader(context, settings.spotifyClientId, settings.spotifyClientSecret) else null
             if (native != null) {
-                val expanded = runCatching { native.expand(source) }.getOrElse { e ->
-                    db.downloads().update(job.copy(status = STATUS_FAILED, message = e.message ?: e.toString(), finishedAt = System.currentTimeMillis())); continue
+                val expandedResult = runCatching { native.expand(source) }
+                if (expandedResult.isFailure) {
+                    val e = expandedResult.exceptionOrNull()
+                    db.downloads().update(job.copy(status = STATUS_FAILED, message = e?.message ?: e.toString(), finishedAt = System.currentTimeMillis()))
+                    continue
                 }
+                val expanded = expandedResult.getOrNull()
                 if (expanded != null) {
                     for (item in expanded.items) db.downloads().insert(DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis()))
                     db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = expanded.note, finishedAt = System.currentTimeMillis()))

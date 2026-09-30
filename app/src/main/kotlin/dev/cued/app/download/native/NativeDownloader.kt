@@ -29,13 +29,14 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
     /** For collections: the per-track items. Null when [source] is a single track or a search. */
     suspend fun expand(source: String): LinkResolver.Result.Expanded? = withContext(Dispatchers.IO) {
         val link = SourceLinks.parse(source) ?: return@withContext null
+        val id = link.id
         when {
-            link.platform == Platform.SPOTIFY && link.type == LinkType.ALBUM && link.id != null -> {
-                val c = spotify.album(link.id)
+            link.platform == Platform.SPOTIFY && link.type == LinkType.ALBUM && id != null -> {
+                val c = spotify.album(id)
                 LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Album \"${c.name}\": ${c.tracks.size} tracks")
             }
-            link.platform == Platform.SPOTIFY && link.type == LinkType.PLAYLIST && link.id != null -> {
-                val c = spotify.playlist(link.id)
+            link.platform == Platform.SPOTIFY && link.type == LinkType.PLAYLIST && id != null -> {
+                val c = spotify.playlist(id)
                 LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Playlist \"${c.name}\": ${c.tracks.size} tracks")
             }
             (link.platform == Platform.YOUTUBE || link.platform == Platform.YOUTUBE_MUSIC) && link.type == LinkType.PLAYLIST -> {
@@ -59,11 +60,12 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
     /** Downloads one track or the best match for a search. */
     suspend fun download(job: DownloadJobEntity, source: String, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
         val link = SourceLinks.parse(source)
+        val spotifyId = link?.id
         val meta: SpotifyClient.Track?
         val ytUrl: String
         when {
-            link != null && link.platform == Platform.SPOTIFY && link.type == LinkType.TRACK && link.id != null -> {
-                meta = spotify.track(link.id)
+            link != null && link.platform == Platform.SPOTIFY && link.type == LinkType.TRACK && spotifyId != null -> {
+                meta = spotify.track(spotifyId)
                 onProgress(0.05f)
                 ytUrl = findOnYouTube(meta) ?: error("No convincing match on YouTube Music for \"${meta.artists.joinToString(", ")} - ${meta.title}\"")
             }
@@ -73,8 +75,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 meta = null
                 val q = source.trim()
                 val cands = youtube.search(q)
-                val best = Matcher.best(Matcher.Wanted(q, emptyList(), null), cands, minScore = 1.0f) ?: cands.firstOrNull()
-                ytUrl = best?.candidate?.id ?: error("Nothing found on YouTube Music for \"$q\"")
+                val best = Matcher.best(Matcher.Wanted(q, emptyList(), null), cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull()
+                ytUrl = best?.id ?: error("Nothing found on YouTube Music for \"$q\"")
             }
         }
         onProgress(0.1f)
@@ -84,7 +86,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         val artists = meta?.artists?.takeIf { it.isNotEmpty() } ?: listOf(info.uploaderName ?: "Unknown artist")
         val tmp = File(context.cacheDir, "dl").apply { mkdirs() }.let { File(it, "${System.currentTimeMillis()}.$ext") }
         try {
-            youtube.download(stream) { p -> onProgress(0.1f + 0.8f * p) }
+            youtube.download(stream, tmp) { p -> onProgress(0.1f + 0.8f * p) }
             if (ext == "m4a" || ext == "mp3") runCatching {
                 Tagger.write(tmp, Tagger.Meta(
                     title = title, artists = artists, album = meta?.album, albumArtist = meta?.albumArtist,
