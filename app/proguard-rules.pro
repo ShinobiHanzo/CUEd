@@ -21,3 +21,5 @@
 -dontwarn java.awt.**
 -dontwarn javax.imageio.**
 -keep class org.jaudiotagger.** { *; }
+-keep class de.sciss.jump3r.** { *; }
+-dontwarn javax.sound.**

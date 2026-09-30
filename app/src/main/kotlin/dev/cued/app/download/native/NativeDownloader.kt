@@ -8,6 +8,7 @@ import dev.cued.core.download.Matcher
 import dev.cued.core.share.SourceLinks
 import dev.cued.core.share.SourceLinks.LinkType
 import dev.cued.core.share.SourceLinks.Platform
+import dev.cued.app.util.DebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -57,8 +58,9 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         if (t.id != null) "https://open.spotify.com/track/${t.id}" else "${t.artists.joinToString(", ")} - ${t.title}", t.title, t.artists.joinToString(", "),
     )
 
-    /** Downloads one track or the best match for a search. */
-    suspend fun download(job: DownloadJobEntity, source: String, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
+    /** Downloads one track or the best match for a search. [format] "mp3" transcodes; anything else keeps the m4a stream. */
+    suspend fun download(job: DownloadJobEntity, source: String, format: String, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
+        DebugLog.i(TAG, "download job #${job.id} source=$source format=$format keys=${spotify.hasKeys}")
         val link = SourceLinks.parse(source)
         val spotifyId = link?.id
         val meta: SpotifyClient.Track?
@@ -66,8 +68,10 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         when {
             link != null && link.platform == Platform.SPOTIFY && link.type == LinkType.TRACK && spotifyId != null -> {
                 meta = spotify.track(spotifyId)
+                DebugLog.d(TAG, "spotify meta: ${meta.artists} - ${meta.title} (${meta.durationMs} ms) album=${meta.album}")
                 onProgress(0.05f)
                 ytUrl = findOnYouTube(meta) ?: error("No convincing match on YouTube Music for \"${meta.artists.joinToString(", ")} - ${meta.title}\"")
+                DebugLog.d(TAG, "matched -> $ytUrl")
             }
             link != null && (link.platform == Platform.YOUTUBE || link.platform == Platform.YOUTUBE_MUSIC) -> { meta = null; ytUrl = link.url }
             link != null -> error("The built-in downloader takes Spotify and YouTube links or a search; this was ${link.label}")
@@ -81,41 +85,72 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         }
         onProgress(0.1f)
         val (info, stream) = youtube.info(ytUrl)
-        val ext = youtube.extensionOf(stream)
+        DebugLog.d(TAG, "stream: ${stream.format?.name} ${stream.averageBitrate} kbps for \"${info.name}\" (${info.duration}s)")
+        var ext = youtube.extensionOf(stream)
         val title = meta?.title ?: info.name
         val artists = meta?.artists?.takeIf { it.isNotEmpty() } ?: listOf(info.uploaderName ?: "Unknown artist")
         val tmp = File(context.cacheDir, "dl").apply { mkdirs() }.let { File(it, "${System.currentTimeMillis()}.$ext") }
+        var fileToImport = tmp
+        val mp3 = if (format == "mp3") File(tmp.parentFile, tmp.nameWithoutExtension + ".mp3") else null
         try {
-            youtube.download(stream, tmp) { p -> onProgress(0.1f + 0.8f * p) }
+            youtube.download(stream, tmp) { p -> onProgress(0.1f + (if (mp3 != null) 0.4f else 0.8f) * p) }
+            DebugLog.d(TAG, "downloaded ${tmp.length()} bytes")
+            if (mp3 != null) {
+                Mp3Encoder.encode(tmp, mp3) { p -> onProgress(0.5f + 0.4f * p) }
+                DebugLog.d(TAG, "mp3 ${mp3.length()} bytes")
+                fileToImport = mp3; ext = "mp3"
+            }
             if (ext == "m4a" || ext == "mp3") runCatching {
-                Tagger.write(tmp, Tagger.Meta(
+                Tagger.write(fileToImport, Tagger.Meta(
                     title = title, artists = artists, album = meta?.album, albumArtist = meta?.albumArtist,
                     trackNumber = meta?.trackNumber, year = meta?.year, genres = meta?.genres.orEmpty(),
                     coverUrl = meta?.coverUrl ?: info.thumbnails.maxByOrNull { it.width }?.url, lyrics = null,
                     comment = if (link?.platform == Platform.SPOTIFY) link.url else ytUrl,
                 ))
             }
+            }.onFailure { DebugLog.w(TAG, "tagging failed (file kept untagged)", it) }
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
-            val (uri, id) = DownloadManager.createPendingAudio(context, name, youtube.mimeOf(stream))
+            val (uri, id) = DownloadManager.createPendingAudio(context, name, if (ext == "mp3") "audio/mpeg" else youtube.mimeOf(stream))
             try {
-                context.contentResolver.openOutputStream(uri)!!.use { out -> tmp.inputStream().use { it.copyTo(out) } }
+                context.contentResolver.openOutputStream(uri)!!.use { out -> fileToImport.inputStream().use { it.copyTo(out) } }
             } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
             DownloadManager.finishPending(context, uri)
             onProgress(1f)
             DownloadManager.Outcome.Done(listOf(id), "${artists.first()} - $title · from YouTube Music" + if (meta != null) " (Spotify metadata)" else "", genresByMediaStoreId = mapOf(id to meta?.genres.orEmpty()))
-        } finally { tmp.delete() }
+        } finally { tmp.delete(); mp3?.delete() }
+    }
+
+    /** Quick health check: search + stream probe, no download. */
+    suspend fun selfTest(): String = withContext(Dispatchers.IO) {
+        val out = StringBuilder()
+        runCatching {
+            val cands = youtube.search("daft punk around the world")
+            out.append("search: ${cands.size} results\n")
+            cands.take(3).forEach { out.append("  ${it.title} · ${it.uploader} · ${it.durationSec}s\n") }
+            val best = Matcher.best(Matcher.Wanted("Around the World", listOf("Daft Punk"), 429), cands)
+            out.append("match: ${best?.candidate?.title ?: "none"} (score ${"%.1f".format(best?.score ?: 0f)})\n")
+            best?.let { val (_, s) = youtube.info(it.candidate.id); out.append("stream: ${s.format?.name} ${s.averageBitrate} kbps · url ok\n") }
+            runCatching { spotify.track("0DiWol3AO6WpXZgp0goxAV") }.onSuccess { out.append("spotify embed: ${it.artists} - ${it.title}\n") }.onFailure { out.append("spotify embed: FAILED ${it.message}\n") }
+            out.append("OK")
+        }.onFailure { out.append("FAILED: ${it}\n${it.stackTrace.take(6).joinToString("\n")}"); DebugLog.e(TAG, "self-test failed", it) }
+        DebugLog.i(TAG, "self-test:\n$out")
+        out.toString()
     }
 
     private fun findOnYouTube(t: SpotifyClient.Track): String? {
         val artist = t.artists.firstOrNull().orEmpty()
         val wanted = Matcher.Wanted(t.title, t.artists, t.durationMs?.let { (it / 1000).toInt() })
         for (q in listOf("$artist - ${t.title}", "${t.artists.joinToString(" ")} ${t.title}", t.title)) {
-            val cands = runCatching { youtube.search(q) }.getOrDefault(emptyList())
-            Matcher.best(wanted, cands)?.let { return it.candidate.id }
+            val cands = runCatching { youtube.search(q) }.onFailure { DebugLog.w(TAG, "search failed for \"$q\"", it) }.getOrDefault(emptyList())
+            val ranked = Matcher.rank(wanted, cands)
+            DebugLog.d(TAG, "search \"$q\": " + ranked.take(3).joinToString(" | ") { "${it.candidate.title} [${"%.1f".format(it.score)}]" })
+            ranked.firstOrNull()?.takeIf { it.score >= 2.5f }?.let { return it.candidate.id }
         }
         return null
     }
+
+    companion object { private const val TAG = "native" }
 
     private fun safe(s: String) = s.replace(Regex("[\\\\/:*?\"<>|]"), "_").replace(Regex("\\s+"), " ").trim().take(120)
 }

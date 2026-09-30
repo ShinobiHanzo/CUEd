@@ -108,6 +108,9 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     OutlinedTextField(value = sid, onValueChange = { sid = it }, singleLine = true, label = { Text("Spotify client ID (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                     OutlinedTextField(value = ssec, onValueChange = { ssec = it }, singleLine = true, label = { Text("Spotify client secret (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
                     TextButton(onClick = { vm.setSpotifyKeys(sid, ssec) }) { Text("Save keys") }
+                    val ntest by vm.nativeTest.collectAsState()
+                    TextButton(onClick = { vm.testNative() }) { Text("Test built-in downloader") }
+                    ntest?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.endsWith("OK")) Teal else Muted) }
                 }
                 DownloadBackend.TERMUX -> Column(Modifier.padding(16.dp)) {
                     val installed = vm.termux.isTermuxInstalled()
@@ -128,11 +131,16 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     }
                 }
             }
-            if (settings.backend != DownloadBackend.BUILT_IN) Row(Modifier.padding(horizontal = 16.dp)) {
-                listOf("mp3", "m4a", "opus", "flac").forEach { f ->
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Format", color = Muted, style = MaterialTheme.typography.labelMedium)
+                (if (settings.backend == DownloadBackend.BUILT_IN) listOf("m4a", "mp3") else listOf("mp3", "m4a", "opus", "flac")).forEach { f ->
                     TextButton(onClick = { vm.setFormat(f) }) { Text(f, color = if (settings.format == f) Teal else Muted) }
                 }
             }
+            if (settings.backend == DownloadBackend.BUILT_IN) Text(
+                if (settings.format == "mp3") "mp3: the AAC stream is decoded and re-encoded on the phone (192 kbps, pure-Java LAME). Slower and a generation lossier than m4a." else "m4a: the AAC stream exactly as YouTube Music serves it. Fastest, best quality.",
+                Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted,
+            )
             SectionHeader("Lyrics with downloads")
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = settings.generateLrc, onCheckedChange = { vm.setGenerateLrc(it) })

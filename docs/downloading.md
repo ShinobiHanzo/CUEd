@@ -20,7 +20,9 @@ spotdl's pipeline rebuilt in Kotlin inside the app, no Python:
    link in the comment, written with jaudiotagger. The library scan then picks the file
    up, genres included.
 
-Limits, honestly: output is m4a only; YouTube changes its site every few months and the
+Output: **m4a** (the AAC stream untouched, fastest, best quality) or **mp3** (decoded and re-encoded on the phone at 192 kbps with a pure-Java LAME; slower, and a generation lossier). Pick under Downloads → Format.
+
+Limits, honestly: YouTube changes its site every few months and the
 extractor has to catch up (update CUEd when downloads start failing with "no stream");
 the keyless Spotify path depends on the embed page's layout and may truncate very long
 playlists, which is what the API keys are for.
@@ -47,21 +49,22 @@ playlists, which is what the API keys are for.
 CUEd runs spotdl through a Termux login shell (`bash -l -c …`) with Termux's `PATH` and
 `LD_LIBRARY_PATH` pinned, via the `RUN_COMMAND` intent, and gets the exit code and output
 back through a pending intent. Files land in `Music/CUEd` and the library rescans.
-**Test spotdl in Termux** on the Downloads screen runs a quick check (python, spotdl,
+When something fails, turn on Settings → Debug log, reproduce, then Share log: it holds
+the resolved link, every search result and score, the chosen stream, and Termux's full
+stdout/stderr. **Test built-in downloader** and **Test spotdl in Termux** on the Downloads
+screen run quick checks (python, spotdl,
 ffmpeg, storage) and shows the result, so a broken install is visible before queueing.
 
 If a job fails with `libpython… not found`, that was the old direct launch without the
 Termux environment; update CUEd. If `spotdl: command not found`, run `pip install spotdl`
 inside Termux again (a Termux update can reset Python).
 
-## Option B: companion server on a computer or Pi
+## Option B: companion server on a computer or Pi (Windows, Linux, macOS)
 
-```bash
-cd tools/spotdl-server
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt   # spotdl; also install ffmpeg via your package manager
-python3 server.py --port 8766
-```
+Windows: install Python 3.9+, double-click `tools/spotdl-server/run.bat`.
+Linux/macOS: `tools/spotdl-server/run.sh`. First run creates a venv and installs spotdl;
+if ffmpeg isn't on the PATH, spotdl fetches its own copy. The console prints the exact
+`http://ip:8766` to enter in the app.
 
 CUEd → Downloads → Backend → **Companion (LAN)** → enter `http://<that-machine-ip>:8766`
 → Test. Downloads run on the computer and the finished files are pulled over to

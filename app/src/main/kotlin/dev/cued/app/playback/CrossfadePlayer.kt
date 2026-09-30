@@ -103,6 +103,7 @@ class CrossfadePlayer(
                 override fun onIsPlayingChanged(isPlaying: Boolean) { invalidateState() }
                 override fun onPlayerError(error: PlaybackException) {
                     Log.w(TAG, "deck $index error", error)
+                    dev.cued.app.util.DebugLog.e("player", "deck $index error on ${item?.mediaId}: ${error.errorCodeName}", error)
                     if (this@Deck === active) { lastError = error; skipBroken() } else cancelTransition()
                     invalidateState()
                 }

@@ -293,6 +293,8 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
     suspend fun pingCompanion(): Result<String> = CompanionDownloader(graph.app, settings.value.companionUrl, settings.value.format).ping()
     fun enqueueShared(text: String) = graph.downloads.enqueue(text)
     val termuxTest: StateFlow<String?> = graph.downloads.termuxTest
+    val nativeTest: StateFlow<String?> = graph.downloads.nativeTest
+    fun testNative() = graph.downloads.testNative()
     fun testTermux() = graph.downloads.testTermux()
 }
 
@@ -431,6 +433,14 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun installIntent(file: java.io.File) = graph.updates.installIntent(file)
     fun setUpdatesAuto(on: Boolean) = viewModelScope.launch { graph.settings.setUpdatesAuto(on) }
     fun setGithubToken(t: String?) = viewModelScope.launch { graph.settings.setGithubToken(t) }
+
+    // ---- Debug log ----
+    val debugLog: StateFlow<Boolean> = graph.settings.debugLog.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setDebugLog(on: Boolean) = viewModelScope.launch { graph.settings.setDebugLog(on) }
+    fun logRecent() = dev.cued.app.util.DebugLog.recent(60)
+    fun logSize() = dev.cued.app.util.DebugLog.sizeBytes()
+    fun clearLog() = dev.cued.app.util.DebugLog.clear()
+    fun logShareIntent(context: android.content.Context) = dev.cued.app.util.DebugLog.shareIntent(context)
     fun setCurve(c: CrossfadeCurve) = viewModelScope.launch { graph.settings.setCurve(c) }
     fun setTempoMatch(on: Boolean) = viewModelScope.launch { graph.settings.setTempoMatch(on) }
     fun setMaxStretch(p: Float) = viewModelScope.launch { graph.settings.setMaxStretchPercent(p) }

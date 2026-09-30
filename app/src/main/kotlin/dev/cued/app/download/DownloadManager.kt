@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import dev.cued.app.util.DebugLog
 import dev.cued.app.Graph
 import dev.cued.app.data.DownloadBackend
 import dev.cued.app.data.db.DownloadJobEntity
@@ -37,6 +38,15 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     val jobs: Flow<List<DownloadJobEntity>> = db.downloads().observeAll()
     /** Output of the last "Test spotdl in Termux" run. */
     val termuxTest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** Output of the last built-in self-test. */
+    val nativeTest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun testNative() {
+        nativeTest.value = "Testing…"
+        graph.appScope.launch {
+            val s = graph.settings.downloadNow()
+            nativeTest.value = dev.cued.app.download.native.NativeDownloader(context, s.spotifyClientId, s.spotifyClientSecret).selfTest()
+        }
+    }
     fun testTermux() { termuxTest.value = "Running in Termux…"; if (!TermuxDownloader(context).test()) termuxTest.value = "Termux not installed or permission not granted" }
 
     /**
@@ -81,12 +91,14 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             val settings = graph.settings.downloadNow()
             val backend = runCatching { DownloadBackend.valueOf(job.backend) }.getOrDefault(settings.backend)
             db.downloads().update(job.copy(status = STATUS_RUNNING, message = "Resolving link…"))
+            DebugLog.i(TAG, "job #${job.id} start backend=$backend source=${job.source} hint=${job.title}")
 
             // 1. Turn whatever was shared into something spotdl can take.
             val resolved = runCatching { resolver.resolve(job.source, job.title) }
                 .getOrElse { LinkResolver.Result.Unsupported("Couldn't resolve the link: ${it.message}") }
             val source = when (resolved) {
                 is LinkResolver.Result.Unsupported -> {
+                    DebugLog.w(TAG, "job #${job.id} unsupported: ${resolved.reason}")
                     db.downloads().update(job.copy(status = STATUS_FAILED, message = resolved.reason, finishedAt = System.currentTimeMillis()))
                     continue
                 }
@@ -103,6 +115,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 is LinkResolver.Result.Direct -> resolved.source
             }
             val note = (resolved as LinkResolver.Result.Direct).note
+            DebugLog.i(TAG, "job #${job.id} resolved -> $source (${note ?: "direct"})")
             db.downloads().update(job.copy(status = STATUS_RUNNING, message = note ?: "Downloading…"))
 
             // 1b. Built-in backend expands Spotify/YouTube albums and playlists itself.
@@ -111,6 +124,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 val expandedResult = runCatching { native.expand(source) }
                 if (expandedResult.isFailure) {
                     val e = expandedResult.exceptionOrNull()
+                    DebugLog.e(TAG, "job #${job.id} expand failed", e)
                     db.downloads().update(job.copy(status = STATUS_FAILED, message = e?.message ?: e.toString(), finishedAt = System.currentTimeMillis()))
                     continue
                 }
@@ -125,7 +139,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             // 2. Run it.
             val result = runCatching {
                 when (backend) {
-                    DownloadBackend.BUILT_IN -> native!!.download(job, source) { p ->
+                    DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format) { p ->
                         graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
                     }
                     DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
@@ -136,11 +150,13 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             }
             result.onFailure { e ->
                 Log.w(TAG, "download failed", e)
+                DebugLog.e(TAG, "job #${job.id} failed: ${e.message}", e)
                 db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_FAILED, message = e.message ?: e.toString(), finishedAt = System.currentTimeMillis())) }
             }.onSuccess { outcome ->
                 when (outcome) {
                     is Outcome.Handed -> db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) }
                     is Outcome.Done -> {
+                        DebugLog.i(TAG, "job #${job.id} done: ${outcome.summary} ids=${outcome.mediaStoreIds}")
                         db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_DONE, progress = 1f, message = outcome.summary, finishedAt = System.currentTimeMillis())) }
                         afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId)
                     }
@@ -151,6 +167,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
 
     /** Called when a backend reports completion (also from [TermuxResultReceiver]). */
     fun complete(jobId: Long, ok: Boolean, message: String?) {
+        DebugLog.i(TAG, "termux job #$jobId complete ok=$ok: $message")
         graph.appScope.launch {
             val j = db.downloads().byId(jobId) ?: return@launch
             db.downloads().update(j.copy(status = if (ok) STATUS_DONE else STATUS_FAILED, progress = if (ok) 1f else j.progress, message = message, finishedAt = System.currentTimeMillis()))

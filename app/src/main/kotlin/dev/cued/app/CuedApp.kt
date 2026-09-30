@@ -16,6 +16,8 @@ import dev.cued.app.playback.PlayerHolder
 import dev.cued.app.share.ShareServer
 import dev.cued.app.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
@@ -31,6 +33,8 @@ class CuedApp : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = Graph(this)
+        dev.cued.app.util.DebugLog.init(this, BuildConfig.VERSION_NAME)
+        graph.settings.debugLog.onEach { dev.cued.app.util.DebugLog.enabled = it }.launchIn(graph.appScope)
         createNotificationChannels()
     }
 

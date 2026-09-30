@@ -140,8 +140,28 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
         UpdateBlock(vm)
 
+        SectionHeader("Debug log", "Off by default. On: downloads, playback errors, updates and crashes are written to a private file you can share.")
+        DebugBlock(vm)
+
         SectionHeader("About", "CUEd: offline music player with spectrograph, crossfade and local sharing. No accounts, no telemetry, no models: every recommendation is a rule you can read in the source.")
         Spacer(Modifier.height(96.dp))
+    }
+}
+
+@Composable
+private fun DebugBlock(vm: SettingsViewModel) {
+    val on by vm.debugLog.collectAsState()
+    val context = LocalContext.current
+    var preview by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        ToggleRow("Debug logging", "Nothing leaves the phone unless you share the file yourself.", on) { vm.setDebugLog(it) }
+        Row {
+            TextButton(onClick = { context.startActivity(android.content.Intent.createChooser(vm.logShareIntent(context), "Share debug log")) }) { Text("Share log") }
+            TextButton(onClick = { preview = vm.logRecent() }) { Text("Show recent") }
+            TextButton(onClick = { vm.clearLog(); preview = null }) { Text("Clear") }
+        }
+        Text("${vm.logSize() / 1024} KB on disk", style = MaterialTheme.typography.bodySmall, color = Muted)
+        preview?.let { Text(it.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 6.dp)) }
     }
 }
 

@@ -71,6 +71,7 @@ class UpdateManager(private val context: Context, private val settings: Settings
         result.onSuccess { rel ->
             _state.value = if (rel == null || compareVersions(rel.version, currentVersion) <= 0) State.UpToDate(currentVersion, System.currentTimeMillis()) else State.Available(rel)
         }.onFailure { e ->
+            dev.cued.app.util.DebugLog.w("update", "check failed", e)
             _state.value = if (quiet) State.Idle else State.Error(friendly(e))
         }
     }

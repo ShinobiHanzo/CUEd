@@ -25,6 +25,8 @@ want it from outside the house.
 import argparse
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -46,6 +48,43 @@ def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
 
 
+def lan_ips():
+    """Best-effort list of this machine's LAN addresses (what to type into the app)."""
+    ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ips.add(s.getsockname()[0])
+        s.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                ips.add(ip)
+    except OSError:
+        pass
+    return sorted(ips)
+
+
+FFMPEG_ARGS = []
+
+
+def ensure_ffmpeg():
+    """spotdl needs ffmpeg. Use the one on PATH, else let spotdl download its own copy (Windows/Linux/macOS)."""
+    global FFMPEG_ARGS
+    if shutil.which("ffmpeg"):
+        return True
+    log("ffmpeg not on PATH; asking spotdl to download a private copy (one-time)…")
+    r = subprocess.run([sys.executable, "-m", "spotdl", "--download-ffmpeg"], input=b"y\n", capture_output=True)
+    if r.returncode == 0:
+        log("ffmpeg downloaded by spotdl")
+        return True
+    log("could not get ffmpeg:", r.stderr.decode(errors="replace")[-400:])
+    return False
+
+
 def snapshot(directory):
     return {f for f in os.listdir(directory) if os.path.splitext(f)[1].lower() in SERVE_EXT}
 
@@ -64,6 +103,7 @@ def run_job(job_id):
     ]
     if job.get("lrc"):
         cmd.append("--generate-lrc")
+    cmd += FFMPEG_ARGS
     log("running:", " ".join(cmd))
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -118,6 +158,12 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(self.path)
         if path == "/health":
             self._json(200, "ok")
+        elif path in ("", "/"):
+            body = "<html><body style='font-family:sans-serif;background:#0e0f13;color:#eee;padding:24px'><h2>CUEd companion</h2>" \
+                   f"<p>Running. In CUEd → Downloads → Companion (LAN), enter one of: <b>{'</b>, <b>'.join('http://%s:%d' % (ip, self.server.server_address[1]) for ip in lan_ips())}</b></p>" \
+                   f"<p>Jobs: {len(JOBS)} · downloads folder: {DOWNLOAD_DIR}</p></body></html>"
+            b = body.encode()
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
         elif path.startswith("/jobs/"):
             job = JOBS.get(path[len("/jobs/"):])
             if not job:
@@ -173,9 +219,22 @@ def main():
     args = ap.parse_args()
     DOWNLOAD_DIR = os.path.abspath(args.dir)
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows consoles default to a legacy code page
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import spotdl  # noqa: F401
+    except ImportError:
+        log("spotdl is not installed in this Python. Run:  python -m pip install spotdl")
+        sys.exit(1)
+    ensure_ffmpeg()
     threading.Thread(target=worker, daemon=True).start()
     srv = ThreadingHTTPServer((args.bind, args.port), Handler)
-    log(f"CUEd companion listening on http://{args.bind}:{args.port}  (downloads -> {DOWNLOAD_DIR})")
+    log(f"CUEd companion listening on port {args.port}  (downloads -> {DOWNLOAD_DIR})")
+    for ip in lan_ips():
+        log(f"  enter this in CUEd:  http://{ip}:{args.port}")
+    log("  (Windows: allow it through the firewall if the phone can't reach it)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

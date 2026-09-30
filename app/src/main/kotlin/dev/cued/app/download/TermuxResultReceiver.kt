@@ -16,6 +16,7 @@ class TermuxResultReceiver : BroadcastReceiver() {
         val stdout = result?.getString("stdout").orEmpty()
         val stderr = result?.getString("stderr").orEmpty()
         val ok = exit == 0
+        dev.cued.app.util.DebugLog.i("termux", "result job=$jobId exit=$exit err=${result?.getInt("err", 0)} errmsg=${result?.getString("errmsg")}\n--- stdout ---\n${stdout.take(4000)}\n--- stderr ---\n${stderr.take(4000)}")
         if (jobId == TermuxDownloader.TEST_JOB_ID) {
             val text = buildString {
                 append(if (ok) "Termux OK\n" else "exit $exit\n")
@@ -26,7 +27,7 @@ class TermuxResultReceiver : BroadcastReceiver() {
             return
         }
         val message = if (ok) stdout.lines().lastOrNull { it.isNotBlank() } ?: "Done"
-        else (stderr.ifBlank { stdout }).lines().lastOrNull { it.isNotBlank() } ?: "spotdl exited with $exit"
+        else (stderr.ifBlank { stdout }).lines().filter { it.isNotBlank() }.takeLast(3).joinToString(" · ").ifBlank { "spotdl exited with $exit" + (result?.getString("errmsg")?.let { " · $it" } ?: "") }
         CuedApp.graph(context).downloads.complete(jobId, ok, message.take(300))
     }
 

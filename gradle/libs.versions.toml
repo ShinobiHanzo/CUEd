@@ -20,6 +20,7 @@ workManager = "2.10.0"
 guava = "33.3.1-android"
 newpipe = "v0.24.3"
 jaudiotagger = "3.0.1"
+jump3r = "1.0.5"
 junit = "4.13.2"
 
 [libraries]
@@ -59,6 +60,7 @@ coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe" }
 jaudiotagger = { module = "net.jthink:jaudiotagger", version.ref = "jaudiotagger" }
+jump3r = { module = "de.sciss:jump3r", version.ref = "jump3r" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 

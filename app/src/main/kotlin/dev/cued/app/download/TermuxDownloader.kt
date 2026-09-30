@@ -40,7 +40,9 @@ class TermuxDownloader(private val context: Context) {
             context, job.id.toInt(), resultIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
-        context.startForegroundService(shellCommand(script, listOf(source, outDir, format), "CUEd download", pending))
+        val intent = shellCommand(script, listOf(source, outDir, format), "CUEd download", pending)
+        dev.cued.app.util.DebugLog.i("termux", "run: bash -l -c <script> args=${listOf(source, outDir, format)}\nscript=$script")
+        context.startForegroundService(intent)
         return DownloadManager.Outcome.Handed
     }
 
@@ -63,7 +65,7 @@ class TermuxDownloader(private val context: Context) {
      * LD_LIBRARY_PATH and PATH to the Termux prefix to be safe.
      */
     private fun shellCommand(script: String, args: List<String>, label: String, pending: PendingIntent): Intent {
-        val wrapped = "export PREFIX=\"$TERMUX_PREFIX\"; export HOME=\"$TERMUX_HOME\"; export PATH=\"$TERMUX_PREFIX/bin:\$PATH\"; " +
+        val wrapped = "export PREFIX=\"$TERMUX_PREFIX\"; export HOME=\"$TERMUX_HOME\"; export PATH=\"$TERMUX_PREFIX/bin:$TERMUX_HOME/.local/bin:\$PATH\"; " +
             "export LD_LIBRARY_PATH=\"$TERMUX_PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"; export TMPDIR=\"$TERMUX_PREFIX/tmp\"; " +
             "export LANG=en_US.UTF-8; cd \"\$HOME\"; $script"
         return Intent().apply {

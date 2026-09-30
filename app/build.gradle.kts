@@ -122,6 +122,7 @@ dependencies {
     // Built-in downloader: YouTube extraction + tagging, no Python needed.
     implementation(libs.newpipe.extractor)
     implementation(libs.jaudiotagger)
+    implementation(libs.jump3r) // pure-Java LAME for mp3 output without ffmpeg
 
     testImplementation(libs.junit)
 }

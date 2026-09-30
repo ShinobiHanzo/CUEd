@@ -113,6 +113,7 @@ class Settings(private val context: Context) {
         val updatesAuto = booleanPreferencesKey("updates_auto")
         val updatesLastCheck = longPreferencesKey("updates_last_check")
         val githubToken = stringPreferencesKey("github_token")
+        val debugLog = booleanPreferencesKey("debug_log")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
@@ -166,6 +167,9 @@ class Settings(private val context: Context) {
     suspend fun setUpdatesAuto(on: Boolean) = context.dataStore.edit { it[K.updatesAuto] = on }
     suspend fun setUpdatesLastCheck(at: Long) = context.dataStore.edit { it[K.updatesLastCheck] = at }
     suspend fun setGithubToken(token: String?) = context.dataStore.edit { if (token.isNullOrBlank()) it.remove(K.githubToken) else it[K.githubToken] = token.trim() }
+
+    val debugLog: Flow<Boolean> = context.dataStore.data.map { it[K.debugLog] ?: false }
+    suspend fun setDebugLog(on: Boolean) = context.dataStore.edit { it[K.debugLog] = on }
 
     val car: Flow<CarSettings> = context.dataStore.data.map { p ->
         CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true)

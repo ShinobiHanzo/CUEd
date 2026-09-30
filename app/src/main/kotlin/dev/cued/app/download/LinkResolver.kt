@@ -38,6 +38,7 @@ class LinkResolver(private val userAgent: String) {
 
     suspend fun resolve(raw: String, hintQuery: String? = null): Result = withContext(Dispatchers.IO) {
         val link = SourceLinks.parse(raw) ?: return@withContext Result.Direct(raw.trim())
+        dev.cued.app.util.DebugLog.d(TAG, "resolve ${link.label} ${link.url}")
         if (link.direct) return@withContext Result.Direct(link.url)
         when (link.platform) {
             Platform.DEEZER -> when (link.type) {
@@ -69,7 +70,7 @@ class LinkResolver(private val userAgent: String) {
         val title = entity?.get("title")?.jsonPrimitive?.content
         val artist = entity?.get("artistName")?.jsonPrimitive?.content
         if (!title.isNullOrBlank()) Result.Direct(listOfNotNull(artist, title).joinToString(" - "), "searching by title via song.link") else null
-    }.onFailure { Log.w(TAG, "song.link: ${it.message}") }.getOrNull()
+    }.onFailure { Log.w(TAG, "song.link: ${it.message}"); dev.cued.app.util.DebugLog.w(TAG, "song.link failed", it) }.getOrNull()
 
     private fun deezerTrack(id: String?): Result? {
         id ?: return null
