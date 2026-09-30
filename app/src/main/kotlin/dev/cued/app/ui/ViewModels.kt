@@ -277,7 +277,8 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
 
 class DownloadViewModel(private val graph: Graph) : ViewModel() {
     val jobs: StateFlow<List<DownloadJobEntity>> = graph.downloads.jobs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val settings: StateFlow<DownloadSettings> = graph.settings.download.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadSettings(DownloadBackend.TERMUX, "", "mp3", false, true))
+    val settings: StateFlow<DownloadSettings> = graph.settings.download.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadSettings(DownloadBackend.BUILT_IN, "", "mp3", false, true, null, null))
+    fun setSpotifyKeys(id: String, secret: String) = viewModelScope.launch { graph.settings.setSpotifyKeys(id, secret) }
     val termux = TermuxDownloader(graph.app)
 
     fun enqueue(source: String) = graph.downloads.enqueue(source)

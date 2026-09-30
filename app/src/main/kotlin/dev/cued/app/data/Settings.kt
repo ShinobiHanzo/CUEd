@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 enum class ScrubberMode { STANDARD, REACTIVE_SPECTROGRAM }
-enum class DownloadBackend { TERMUX, COMPANION }
+enum class DownloadBackend { BUILT_IN, TERMUX, COMPANION }
 
 /**
  * Two independent blend modes:
@@ -93,6 +93,9 @@ data class DownloadSettings(
     val generateLrc: Boolean,
     /** After a download, look lyrics up inside CUEd (embedded tag → lrclib if allowed). */
     val fetchLyricsAfter: Boolean,
+    /** Optional Spotify developer keys for the built-in downloader (full playlists, genres). */
+    val spotifyClientId: String?,
+    val spotifyClientSecret: String?,
 )
 
 /** Everything user-tunable, persisted with DataStore. Defaults are the values a DJ-ish listener would expect. */
@@ -124,6 +127,8 @@ class Settings(private val context: Context) {
         val format = stringPreferencesKey("download_format")
         val generateLrc = booleanPreferencesKey("download_generate_lrc")
         val fetchLyricsAfter = booleanPreferencesKey("download_fetch_lyrics_after")
+        val spotifyId = stringPreferencesKey("spotify_client_id")
+        val spotifySecret = stringPreferencesKey("spotify_client_secret")
         val sharePort = intPreferencesKey("share_port")
         val lastScanAt = longPreferencesKey("last_scan_at")
     }
@@ -176,11 +181,13 @@ class Settings(private val context: Context) {
 
     val download: Flow<DownloadSettings> = context.dataStore.data.map { p ->
         DownloadSettings(
-            backend = p[K.backend]?.let { runCatching { DownloadBackend.valueOf(it) }.getOrNull() } ?: DownloadBackend.TERMUX,
+            backend = p[K.backend]?.let { runCatching { DownloadBackend.valueOf(it) }.getOrNull() } ?: DownloadBackend.BUILT_IN,
             companionUrl = p[K.companionUrl] ?: "http://192.168.1.10:8766",
             format = p[K.format] ?: "mp3",
             generateLrc = p[K.generateLrc] ?: false,
             fetchLyricsAfter = p[K.fetchLyricsAfter] ?: true,
+            spotifyClientId = p[K.spotifyId]?.takeIf { it.isNotBlank() },
+            spotifyClientSecret = p[K.spotifySecret]?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -208,6 +215,10 @@ class Settings(private val context: Context) {
     suspend fun setDownloadBackend(b: DownloadBackend) = context.dataStore.edit { it[K.backend] = b.name }
     suspend fun setCompanionUrl(url: String) = context.dataStore.edit { it[K.companionUrl] = url.trim().trimEnd('/') }
     suspend fun setDownloadFormat(fmt: String) = context.dataStore.edit { it[K.format] = fmt }
+    suspend fun setSpotifyKeys(id: String?, secret: String?) = context.dataStore.edit {
+        if (id.isNullOrBlank()) it.remove(K.spotifyId) else it[K.spotifyId] = id.trim()
+        if (secret.isNullOrBlank()) it.remove(K.spotifySecret) else it[K.spotifySecret] = secret.trim()
+    }
     suspend fun setGenerateLrc(on: Boolean) = context.dataStore.edit { it[K.generateLrc] = on }
     suspend fun setFetchLyricsAfter(on: Boolean) = context.dataStore.edit { it[K.fetchLyricsAfter] = on }
     suspend fun setSharePort(port: Int) = context.dataStore.edit { it[K.sharePort] = port.coerceIn(1024, 65535) }

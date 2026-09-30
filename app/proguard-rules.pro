@@ -11,3 +11,13 @@
 -keep,includedescriptorclasses class dev.cued.**$$serializer { *; }
 -keepclassmembers class dev.cued.** { *** Companion; }
 -keepclasseswithmembers class dev.cued.** { kotlinx.serialization.KSerializer serializer(...); }
+
+# NewPipeExtractor + Rhino (JS engine for YouTube's throttling parameter)
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-dontwarn org.mozilla.javascript.**
+-dontwarn org.schabi.newpipe.extractor.**
+# jaudiotagger references java.awt in code paths we never execute on Android
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-keep class org.jaudiotagger.** { *; }

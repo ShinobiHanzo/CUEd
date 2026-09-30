@@ -1,8 +1,33 @@
 # Downloading with spotdl
 
-`spotdl` is Python; Android won't run it natively. CUEd supports two ways, both offline
-from CUEd's point of view (the app itself makes no network requests except to the LAN
-companion or its own share server).
+Three backends, pick one under Downloads → Backend:
+
+## Built-in (default, no setup)
+
+spotdl's pipeline rebuilt in Kotlin inside the app, no Python:
+
+1. **Metadata.** Spotify links are read through Spotify's public embed page (title,
+   artists, duration, cover, album/playlist track lists) with no keys. Add your own free
+   Spotify developer client id/secret (developer.spotify.com → Create app) and CUEd uses
+   the Web API instead: complete long playlists, ISRC, release year and artist genres
+   written straight into the tag.
+2. **Match.** YouTube Music search via NewPipeExtractor (the library behind the NewPipe
+   app; no API key). The best result is picked by title words, artist presence and
+   duration, penalising live/remix/cover uploads unless you asked for them.
+3. **Download.** The AAC audio stream as `.m4a`, in ranged chunks. No transcoding, so no
+   ffmpeg; the quality is what YouTube Music serves (~128 kbps AAC).
+4. **Tag.** Title, artists, album, track number, year, genre, cover art, and the source
+   link in the comment, written with jaudiotagger. The library scan then picks the file
+   up, genres included.
+
+Limits, honestly: output is m4a only; YouTube changes its site every few months and the
+extractor has to catch up (update CUEd when downloads start failing with "no stream");
+the keyless Spotify path depends on the embed page's layout and may truncate very long
+playlists, which is what the API keys are for.
+
+## Termux and companion (spotdl proper)
+
+`spotdl` is Python; Android won't run it natively. These two backends run it elsewhere.
 
 ## Option A: Termux on the phone
 

@@ -105,9 +105,25 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             val note = (resolved as LinkResolver.Result.Direct).note
             db.downloads().update(job.copy(status = STATUS_RUNNING, message = note ?: "Downloading…"))
 
+            // 1b. Built-in backend expands Spotify/YouTube albums and playlists itself.
+            val native = if (backend == DownloadBackend.BUILT_IN) dev.cued.app.download.native.NativeDownloader(context, settings.spotifyClientId, settings.spotifyClientSecret) else null
+            if (native != null) {
+                val expanded = runCatching { native.expand(source) }.getOrElse { e ->
+                    db.downloads().update(job.copy(status = STATUS_FAILED, message = e.message ?: e.toString(), finishedAt = System.currentTimeMillis())); continue
+                }
+                if (expanded != null) {
+                    for (item in expanded.items) db.downloads().insert(DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis()))
+                    db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = expanded.note, finishedAt = System.currentTimeMillis()))
+                    continue
+                }
+            }
+
             // 2. Run it.
             val result = runCatching {
                 when (backend) {
+                    DownloadBackend.BUILT_IN -> native!!.download(job, source) { p ->
+                        graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
+                    }
                     DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
                     DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc) { p ->
                         graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
@@ -122,7 +138,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                     is Outcome.Handed -> db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) }
                     is Outcome.Done -> {
                         db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_DONE, progress = 1f, message = outcome.summary, finishedAt = System.currentTimeMillis())) }
-                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase)
+                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId)
                     }
                 }
             }
@@ -136,13 +152,13 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             db.downloads().update(j.copy(status = if (ok) STATUS_DONE else STATUS_FAILED, progress = if (ok) 1f else j.progress, message = message, finishedAt = System.currentTimeMillis()))
             if (ok) {
                 scanDownloadFolder()
-                afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap())
+                afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap(), emptyMap())
             }
             pump()
         }
     }
 
-    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>) {
+    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>, genresByMediaStoreId: Map<Long, List<String>> = emptyMap()) {
         graph.library.rescan()
         // Which tracks are new? Companion tells us the MediaStore ids; Termux doesn't, so fall back to "added since the job started".
         val tracks = if (mediaStoreIds.isNotEmpty()) mediaStoreIds.mapNotNull { db.tracks().byMediaStoreId(it) }
@@ -151,6 +167,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         val ls = graph.settings.lyricsNow()
         for (t in tracks) {
             if (t.sourceLink == null && source.startsWith("http")) graph.library.setSourceLink(t.id, source)
+            genresByMediaStoreId[t.mediaStoreId]?.takeIf { it.isNotEmpty() }?.let { graph.library.setGenresAuto(t.id, it) }
             if (!t.isLong) graph.analysis.request(t.id)
             // .lrc that came back from the companion, matched by file base name.
             val base = t.path?.let { java.io.File(it).nameWithoutExtension }
@@ -181,7 +198,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     sealed class Outcome {
         /** Termux took the command; a broadcast will tell us when it is done. */
         data object Handed : Outcome()
-        data class Done(val mediaStoreIds: List<Long>, val summary: String, val lrcByBase: Map<String, String> = emptyMap()) : Outcome()
+        data class Done(val mediaStoreIds: List<Long>, val summary: String, val lrcByBase: Map<String, String> = emptyMap(), val genresByMediaStoreId: Map<Long, List<String>> = emptyMap()) : Outcome()
     }
 
     companion object {

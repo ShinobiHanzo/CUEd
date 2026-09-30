@@ -68,7 +68,7 @@ android {
     }
 
     packaging {
-        resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/INDEX.LIST")
+        resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }
 }
 
@@ -118,6 +118,10 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.nanohttpd)
     implementation(libs.coil.compose)
+
+    // Built-in downloader: YouTube extraction + tagging, no Python needed.
+    implementation(libs.newpipe.extractor)
+    implementation(libs.jaudiotagger)
 
     testImplementation(libs.junit)
 }

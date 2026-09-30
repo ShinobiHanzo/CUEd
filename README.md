@@ -26,7 +26,7 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Genres | Read from file tags on every scan and normalised (aliases, ID3v1 codes, multi-genre splits); optional MusicBrainz fill for untagged files; hand edits are locked; sweeps to re-label or tidy the whole library | `core/.../genre/`, `app/.../genre/` |
 | Smart lists | Trending (recency-weighted plays), Newly downloaded, Unplayed, Forgotten, Favourites, Recommended (genre/artist/tempo/co-play heuristics, with reasons shown) | `core/.../reco/SmartLists.kt`, `Recommender.kt` |
 | Playlists | Create, rename, reorder, save any smart list or genre or "more like this" as a playlist | `ui/screens/PlaylistsScreen.kt` |
-| Downloads | `spotdl` via **Termux** on the phone, or via the **companion server** on a laptop/Pi over LAN. Spotify/YouTube links or search text; share-sheet integration | `app/.../download`, `tools/spotdl-server` |
+| Downloads | **Built-in** (default, no setup): Spotify/YouTube metadata → YouTube Music match → AAC download → tagged m4a, all in Kotlin. Or `spotdl` via **Termux** on the phone or the **companion server** over LAN. Links from any platform, playlists expanded, share-sheet integration | `app/.../download`, `core/.../download/Matcher.kt`, `tools/spotdl-server` |
 | Sharing | QR code + NFC (host-card emulation, phone-to-phone, plus NDEF stickers) carrying a `cued://share?…` payload with the source link, a local file URL and an APK URL. Local HTTP server serves the track and the app itself | `app/.../share`, `core/.../share/SharePayload.kt` |
 
 ## Get the app

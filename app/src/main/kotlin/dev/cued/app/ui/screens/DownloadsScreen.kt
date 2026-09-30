@@ -95,11 +95,20 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 DownloadBackend.entries.forEachIndexed { i, b ->
                     SegmentedButton(selected = settings.backend == b, onClick = { vm.setBackend(b) }, shape = SegmentedButtonDefaults.itemShape(i, DownloadBackend.entries.size)) {
-                        Text(if (b == DownloadBackend.TERMUX) "Termux (on phone)" else "Companion (LAN)")
+                        Text(when (b) { DownloadBackend.BUILT_IN -> "Built-in"; DownloadBackend.TERMUX -> "Termux"; DownloadBackend.COMPANION -> "Companion" }, maxLines = 1)
                     }
                 }
             }
             when (settings.backend) {
+                DownloadBackend.BUILT_IN -> Column(Modifier.padding(16.dp)) {
+                    Text("No setup. Finds the track on YouTube Music, downloads the AAC stream as .m4a, writes title, artist, album and cover into the file.", color = Teal)
+                    Text("Spotify links work without keys via the public embed page. Add your own free Spotify developer keys for long playlists and genre tags (developer.spotify.com → Create app).", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                    var sid by remember(settings.spotifyClientId) { mutableStateOf(settings.spotifyClientId.orEmpty()) }
+                    var ssec by remember(settings.spotifyClientSecret) { mutableStateOf(settings.spotifyClientSecret.orEmpty()) }
+                    OutlinedTextField(value = sid, onValueChange = { sid = it }, singleLine = true, label = { Text("Spotify client ID (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                    OutlinedTextField(value = ssec, onValueChange = { ssec = it }, singleLine = true, label = { Text("Spotify client secret (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                    TextButton(onClick = { vm.setSpotifyKeys(sid, ssec) }) { Text("Save keys") }
+                }
                 DownloadBackend.TERMUX -> Column(Modifier.padding(16.dp)) {
                     val installed = vm.termux.isTermuxInstalled()
                     val perm = vm.termux.hasPermission()
@@ -119,7 +128,7 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     }
                 }
             }
-            Row(Modifier.padding(horizontal = 16.dp)) {
+            if (settings.backend != DownloadBackend.BUILT_IN) Row(Modifier.padding(horizontal = 16.dp)) {
                 listOf("mp3", "m4a", "opus", "flac").forEach { f ->
                     TextButton(onClick = { vm.setFormat(f) }) { Text(f, color = if (settings.format == f) Teal else Muted) }
                 }
@@ -127,7 +136,7 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
             SectionHeader("Lyrics with downloads")
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = settings.generateLrc, onCheckedChange = { vm.setGenerateLrc(it) })
-                Column { Text("Save .lrc lyrics files next to tracks"); Text("spotdl --generate-lrc. Companion: imported into CUEd too. Termux: readable by other players; CUEd reads them on Android 10 and older.", style = MaterialTheme.typography.bodySmall, color = Muted) }
+                Column { Text("Save .lrc lyrics files next to tracks"); Text("Termux/companion only (spotdl --generate-lrc). The built-in downloader relies on the lookup below instead.", style = MaterialTheme.typography.bodySmall, color = Muted) }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = settings.fetchLyricsAfter, onCheckedChange = { vm.setFetchLyricsAfter(it) })
