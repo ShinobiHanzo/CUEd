@@ -107,7 +107,6 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                     coverUrl = meta?.coverUrl ?: info.thumbnails.maxByOrNull { it.width }?.url, lyrics = null,
                     comment = if (link?.platform == Platform.SPOTIFY) link.url else ytUrl,
                 ))
-            }
             }.onFailure { DebugLog.w(TAG, "tagging failed (file kept untagged)", it) }
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
