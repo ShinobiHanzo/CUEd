@@ -65,7 +65,7 @@ class TermuxDownloader(private val context: Context) {
     private fun shellCommand(script: String, args: List<String>, label: String, pending: PendingIntent): Intent {
         val wrapped = "export PREFIX=\"$TERMUX_PREFIX\"; export HOME=\"$TERMUX_HOME\"; export PATH=\"$TERMUX_PREFIX/bin:\$PATH\"; " +
             "export LD_LIBRARY_PATH=\"$TERMUX_PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"; export TMPDIR=\"$TERMUX_PREFIX/tmp\"; " +
-            "export LANG=en_US.UTF-8; cd \"$HOME\"; $script"
+            "export LANG=en_US.UTF-8; cd \"\$HOME\"; $script"
         return Intent().apply {
             setClassName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
