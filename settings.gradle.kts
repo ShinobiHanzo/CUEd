@@ -12,7 +12,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         // NewPipeExtractor (YouTube extraction for the built-in downloader) is published on JitPack only.
-        maven("https://jitpack.io") { content { includeGroup("com.github.TeamNewPipe") } }
+        maven("https://jitpack.io") { content { includeGroupByRegex("com\\.github\\.TeamNewPipe.*") } }
     }
 }
 
