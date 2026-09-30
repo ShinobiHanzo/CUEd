@@ -105,6 +105,9 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     val perm = vm.termux.hasPermission()
                     Text(if (!installed) "Termux not installed. Get it from F-Droid, then:" else if (!perm) "Termux found. Grant CUEd the 'Run commands in Termux' permission in system settings, then:" else "Termux ready.", color = if (installed && perm) Teal else Muted)
                     Text("pkg install python ffmpeg\npip install spotdl\ntermux-setup-storage\necho allow-external-apps=true >> ~/.termux/termux.properties", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
+                    val test by vm.termuxTest.collectAsState()
+                    TextButton(onClick = { vm.testTermux() }, enabled = installed && perm) { Text("Test spotdl in Termux") }
+                    test?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.startsWith("Termux OK")) Teal else Muted) }
                 }
                 DownloadBackend.COMPANION -> Column(Modifier.padding(16.dp)) {
                     Text("Run tools/spotdl-server/server.py on any computer or Pi on the same Wi-Fi. Enter its address:", color = Muted, style = MaterialTheme.typography.bodySmall)

@@ -35,6 +35,9 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     private val resolver = LinkResolver("CUEd/${dev.cued.app.BuildConfig.VERSION_NAME} (https://github.com/ShinobiHanzo/CUEd)")
 
     val jobs: Flow<List<DownloadJobEntity>> = db.downloads().observeAll()
+    /** Output of the last "Test spotdl in Termux" run. */
+    val termuxTest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun testTermux() { termuxTest.value = "Running in Termux…"; if (!TermuxDownloader(context).test()) termuxTest.value = "Termux not installed or permission not granted" }
 
     /**
      * [source] may be a link from any platform, a search, or raw share-sheet text.

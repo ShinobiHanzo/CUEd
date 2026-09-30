@@ -291,6 +291,8 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
     fun rescanFolder() = viewModelScope.launch { graph.downloads.scanDownloadFolder(); graph.library.rescan() }
     suspend fun pingCompanion(): Result<String> = CompanionDownloader(graph.app, settings.value.companionUrl, settings.value.format).ping()
     fun enqueueShared(text: String) = graph.downloads.enqueue(text)
+    val termuxTest: StateFlow<String?> = graph.downloads.termuxTest
+    fun testTermux() = graph.downloads.testTermux()
 }
 
 // ---------------------------------------------------------------------------

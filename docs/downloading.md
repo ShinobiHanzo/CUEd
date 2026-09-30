@@ -19,9 +19,15 @@ companion or its own share server).
    (Apps → CUEd → Permissions, or Apps → Termux → the additional-permissions list).
 4. CUEd → Downloads → Backend → **Termux**. Paste a link, Queue.
 
-CUEd sends `spotdl download <link> --output /sdcard/Music/CUEd/{artists} - {title}.{output-ext}`
-via Termux's `RUN_COMMAND` intent and gets the exit code back through a pending intent.
-Files land in `Music/CUEd` and the library rescans.
+CUEd runs spotdl through a Termux login shell (`bash -l -c …`) with Termux's `PATH` and
+`LD_LIBRARY_PATH` pinned, via the `RUN_COMMAND` intent, and gets the exit code and output
+back through a pending intent. Files land in `Music/CUEd` and the library rescans.
+**Test spotdl in Termux** on the Downloads screen runs a quick check (python, spotdl,
+ffmpeg, storage) and shows the result, so a broken install is visible before queueing.
+
+If a job fails with `libpython… not found`, that was the old direct launch without the
+Termux environment; update CUEd. If `spotdl: command not found`, run `pip install spotdl`
+inside Termux again (a Termux update can reset Python).
 
 ## Option B: companion server on a computer or Pi
 
