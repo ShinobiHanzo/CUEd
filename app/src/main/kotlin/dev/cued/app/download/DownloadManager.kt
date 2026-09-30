@@ -106,7 +106,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                     // A playlist/album from a platform spotdl can't read: one job per track.
                     for (item in resolved.items) {
                         db.downloads().insert(
-                            DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis())
+                            DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis(), artworkUrl = item.artworkUrl)
                         )
                     }
                     db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = resolved.note, finishedAt = System.currentTimeMillis()))
@@ -130,7 +130,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 }
                 val expanded = expandedResult.getOrNull()
                 if (expanded != null) {
-                    for (item in expanded.items) db.downloads().insert(DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis()))
+                    for (item in expanded.items) db.downloads().insert(DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis(), artworkUrl = item.artworkUrl))
                     db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = expanded.note, finishedAt = System.currentTimeMillis()))
                     continue
                 }
@@ -139,9 +139,9 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             // 2. Run it.
             val result = runCatching {
                 when (backend) {
-                    DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format) { p ->
+                    DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format, onProgress = { p ->
                         graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
-                    }
+                    }, onArtwork = { url -> graph.appScope.launch { db.downloads().setArtwork(job.id, url) } })
                     DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
                     DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc) { p ->
                         graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }

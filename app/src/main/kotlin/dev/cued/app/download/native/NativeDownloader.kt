@@ -48,18 +48,18 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 items += page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
                 var guard = 0
                 while (page.hasNextPage() && items.size < 300 && guard++ < 10) { page = ex.getPage(page.nextPage); items += page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>() }
-                LinkResolver.Result.Expanded(items.map { LinkResolver.Item(it.url, it.name, it.uploaderName) }, "YouTube playlist \"${ex.name}\": ${items.size} videos")
+                LinkResolver.Result.Expanded(items.map { LinkResolver.Item(it.url, it.name, it.uploaderName, it.thumbnails.maxByOrNull { th -> th.width }?.url) }, "YouTube playlist \"${ex.name}\": ${items.size} videos")
             }
             else -> null
         }
     }
 
     private fun item(t: SpotifyClient.Track) = LinkResolver.Item(
-        if (t.id != null) "https://open.spotify.com/track/${t.id}" else "${t.artists.joinToString(", ")} - ${t.title}", t.title, t.artists.joinToString(", "),
+        if (t.id != null) "https://open.spotify.com/track/${t.id}" else "${t.artists.joinToString(", ")} - ${t.title}", t.title, t.artists.joinToString(", "), t.coverUrl,
     )
 
     /** Downloads one track or the best match for a search. [format] "mp3" transcodes; anything else keeps the m4a stream. */
-    suspend fun download(job: DownloadJobEntity, source: String, format: String, onProgress: (Float) -> Unit): DownloadManager.Outcome = withContext(Dispatchers.IO) {
+    suspend fun download(job: DownloadJobEntity, source: String, format: String, onProgress: (Float) -> Unit, onArtwork: (String) -> Unit = {}): DownloadManager.Outcome = withContext(Dispatchers.IO) {
         DebugLog.i(TAG, "download job #${job.id} source=$source format=$format keys=${spotify.hasKeys}")
         val link = SourceLinks.parse(source)
         val spotifyId = link?.id
@@ -69,6 +69,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             link != null && link.platform == Platform.SPOTIFY && link.type == LinkType.TRACK && spotifyId != null -> {
                 meta = spotify.track(spotifyId)
                 DebugLog.d(TAG, "spotify meta: ${meta.artists} - ${meta.title} (${meta.durationMs} ms) album=${meta.album}")
+                meta.coverUrl?.let(onArtwork)
                 onProgress(0.05f)
                 ytUrl = findOnYouTube(meta) ?: error("No convincing match on YouTube Music for \"${meta.artists.joinToString(", ")} - ${meta.title}\"")
                 DebugLog.d(TAG, "matched -> $ytUrl")
@@ -86,6 +87,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         onProgress(0.1f)
         val (info, stream) = youtube.info(ytUrl)
         DebugLog.d(TAG, "stream: ${stream.format?.name} ${stream.averageBitrate} kbps for \"${info.name}\" (${info.duration}s)")
+        if (meta?.coverUrl == null) info.thumbnails.maxByOrNull { it.width }?.url?.let(onArtwork)
         var ext = youtube.extensionOf(stream)
         val title = meta?.title ?: info.name
         val artists = meta?.artists?.takeIf { it.isNotEmpty() } ?: listOf(info.uploaderName ?: "Unknown artist")

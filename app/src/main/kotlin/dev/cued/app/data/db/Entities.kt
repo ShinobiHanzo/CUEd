@@ -105,6 +105,8 @@ data class DownloadJobEntity(
     val createdAt: Long,
     val finishedAt: Long? = null,
     val remoteJobId: String? = null,
+    /** Cover/thumbnail for the job row, once known (Spotify cover or YouTube thumbnail). */
+    @ColumnInfo(defaultValue = "NULL") val artworkUrl: String? = null,
 )
 
 /** Lyrics for a track. [synced] is LRC text when available; [source] is embedded / sidecar / lrclib / none. */

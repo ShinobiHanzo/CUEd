@@ -4,6 +4,7 @@ import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.TagOptionSingleton
 import org.jaudiotagger.tag.images.AndroidArtwork
+import dev.cued.app.util.DebugLog
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -30,13 +31,25 @@ object Tagger {
         meta.comment?.let { runCatching { tag.setField(FieldKey.COMMENT, it) } }
         meta.coverUrl?.let { url ->
             runCatching {
-                val bytes = fetch(url) ?: return@runCatching
-                val art = AndroidArtwork().apply { binaryData = bytes; mimeType = if (url.contains(".png")) "image/png" else "image/jpeg"; pictureType = 3 }
+                val bytes = coverJpeg(url) ?: run { DebugLog.w("tag", "cover fetch failed: $url"); return@runCatching }
+                val art = AndroidArtwork().apply { binaryData = bytes; mimeType = "image/jpeg"; pictureType = 3 }
                 tag.deleteArtworkField()
                 tag.setField(art)
-            }
+                DebugLog.d("tag", "cover embedded (${bytes.size / 1024} KB)")
+            }.onFailure { DebugLog.w("tag", "cover embed failed", it) }
         }
         audio.commit()
+    }
+
+    /** Fetches any image (jpeg/png/webp) and re-encodes it as a ≤800px JPEG, the safest thing to put in a tag. */
+    private fun coverJpeg(url: String): ByteArray? {
+        val raw = fetch(url) ?: return null
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw.takeIf { url.contains(".jpg") || url.contains(".jpeg") }
+        val scale = 800f / maxOf(bmp.width, bmp.height)
+        val out = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
+        val bos = java.io.ByteArrayOutputStream()
+        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, bos)
+        return bos.toByteArray()
     }
 
     private fun fetch(url: String): ByteArray? {

@@ -26,7 +26,7 @@ import java.net.URLEncoder
  *  - Anything else: the page's og:title / og:description becomes a search.
  */
 class LinkResolver(private val userAgent: String) {
-    data class Item(val source: String, val title: String? = null, val artist: String? = null)
+    data class Item(val source: String, val title: String? = null, val artist: String? = null, val artworkUrl: String? = null)
 
     sealed class Result {
         data class Direct(val source: String, val note: String? = null) : Result()

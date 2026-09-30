@@ -82,7 +82,7 @@ fun CarModeScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onVoice: () -> Un
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AlbumArt(track?.albumId, Modifier.size(96.dp), corner = 16)
+            AlbumArt(track, Modifier.size(96.dp), corner = 16)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(state.title.ifBlank { "Nothing playing" }, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 32.sp)

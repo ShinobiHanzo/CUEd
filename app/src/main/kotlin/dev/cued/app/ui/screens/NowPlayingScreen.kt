@@ -168,7 +168,7 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
                     }
                 },
         ) {
-            AlbumArt(track?.albumId, Modifier.fillMaxSize().blur(artBlur).alpha(artAlpha), corner = 20)
+            AlbumArt(track, Modifier.fillMaxSize().blur(artBlur).alpha(artAlpha), corner = 20)
             androidx.compose.animation.AnimatedVisibility(
                 visible = singAlong,
                 enter = slideInVertically { it / 2 } + fadeIn(),

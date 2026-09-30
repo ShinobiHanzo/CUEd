@@ -80,7 +80,7 @@ fun LongPlaysScreen(vm: LibraryViewModel, playingId: Long?, onBack: () -> Unit, 
 private fun LongRow(t: TrackEntity, playing: Boolean, onClick: () -> Unit, onMore: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AlbumArt(t.albumId, Modifier.size(56.dp), corner = 10)
+            AlbumArt(t, Modifier.size(56.dp), corner = 10)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(t.title, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (playing) Teal else MaterialTheme.colorScheme.onSurface, fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal)

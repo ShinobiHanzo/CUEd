@@ -23,7 +23,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,13 +54,26 @@ fun formatMs(ms: Long): String {
 }
 
 @Composable
-fun AlbumArt(albumId: Long?, modifier: Modifier = Modifier, corner: Int = 8) {
+fun AlbumArt(albumId: Long?, modifier: Modifier = Modifier, corner: Int = 8, trackUri: String? = null) {
+    val context = LocalContext.current
+    var storeFailed by remember(albumId) { mutableStateOf(albumId == null) }
+    val embedded by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = trackUri, key2 = storeFailed) {
+        value = if (storeFailed && trackUri != null) Artwork.embedded(context, trackUri) else null
+    }
     Box(modifier.clip(RoundedCornerShape(corner.dp)).background(Ink3), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.MusicNote, contentDescription = null, tint = Muted)
         val uri = LibraryRepository.albumArtUri(albumId)
-        if (uri != null) AsyncImage(model = uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+        if (uri != null && !storeFailed) {
+            AsyncImage(model = uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize(), onError = { storeFailed = true })
+        }
+        embedded?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize()) }
     }
 }
+
+/** Convenience overload: album art from MediaStore with an embedded-picture fallback. */
+@Composable
+fun AlbumArt(track: dev.cued.app.data.db.TrackEntity?, modifier: Modifier = Modifier, corner: Int = 8) =
+    AlbumArt(track?.albumId, modifier, corner, track?.uri)
 
 @Composable
 fun TrackRow(
@@ -67,7 +88,7 @@ fun TrackRow(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AlbumArt(track.albumId, Modifier.size(48.dp))
+        AlbumArt(track, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

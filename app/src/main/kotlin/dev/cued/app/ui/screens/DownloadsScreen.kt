@@ -1,6 +1,10 @@
 package dev.cued.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -161,6 +165,12 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
         items(jobs, key = { it.id }) { j ->
             Column {
                 ListItem(
+                    leadingContent = {
+                        Box(Modifier.size(48.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).background(dev.cued.app.ui.theme.Ink3), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Download, contentDescription = null, tint = Muted)
+                            j.artworkUrl?.let { coil.compose.AsyncImage(model = it, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                        }
+                    },
                     headlineContent = { Text(j.title ?: j.source, maxLines = 1) },
                     supportingContent = { Text("${j.backend.lowercase()} · ${j.status.lowercase()}${j.message?.let { " · $it" } ?: ""}", maxLines = 2, color = Muted) },
                     trailingContent = { if (j.status == DownloadManager.STATUS_FAILED) TextButton(onClick = { vm.retry(j.id) }) { Text("Retry") } },

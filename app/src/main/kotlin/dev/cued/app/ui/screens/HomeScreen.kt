@@ -91,7 +91,7 @@ fun HomeScreen(
                                 Column(
                                     Modifier.width(132.dp).padding(8.dp).clickable { onPlay(tracks, tracks.indexOf(t)) },
                                 ) {
-                                    AlbumArt(t.albumId, Modifier.size(116.dp), corner = 12)
+                                    AlbumArt(t, Modifier.size(116.dp), corner = 12)
                                     Spacer(Modifier.height(6.dp))
                                     Text(t.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                                     Text(t.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = Muted)

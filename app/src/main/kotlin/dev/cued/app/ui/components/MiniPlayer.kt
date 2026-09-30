@@ -37,7 +37,7 @@ import dev.cued.app.ui.theme.Muted
 import dev.cued.app.ui.theme.Teal
 
 @Composable
-fun MiniPlayer(state: PlayerUiState, albumId: Long?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit = {}) {
+fun MiniPlayer(state: PlayerUiState, track: dev.cued.app.data.db.TrackEntity?, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit = {}) {
     if (state.trackId == null) return
     // Swipe left/right on the strip to skip; tap opens the player.
     val threshold = with(LocalDensity.current) { 64.dp.toPx() }
@@ -56,7 +56,7 @@ fun MiniPlayer(state: PlayerUiState, albumId: Long?, onOpen: () -> Unit, onToggl
             modifier = Modifier.fillMaxWidth().height(2.dp), color = Teal, trackColor = Ink2,
         )
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AlbumArt(albumId, Modifier.size(40.dp))
+            AlbumArt(track, Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(state.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)

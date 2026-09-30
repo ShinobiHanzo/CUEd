@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TrackEntity::class, TrackGenreEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, PlayEventEntity::class, DownloadJobEntity::class, LyricsEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class CuedDatabase : RoomDatabase() {
@@ -40,9 +40,15 @@ abstract class CuedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `download_jobs` ADD COLUMN `artworkUrl` TEXT DEFAULT NULL")
+            }
+        }
+
         fun build(context: Context): CuedDatabase =
             Room.databaseBuilder(context, CuedDatabase::class.java, "cued.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
     }
