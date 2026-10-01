@@ -4,4 +4,6 @@
     <string name="nfc_service_description">CUEd tap-to-share</string>
     <string name="notification_channel_playback">Playback</string>
     <string name="notification_channel_downloads">Downloads</string>
+    <string name="widget_name">CUEd player</string>
+    <string name="widget_description">Now playing with play/pause and skip. Resize for a bar, a card or a tall tile.</string>
 </resources>

@@ -110,6 +110,10 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
 
+    // Home-screen widgets (Compose-style RemoteViews)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)

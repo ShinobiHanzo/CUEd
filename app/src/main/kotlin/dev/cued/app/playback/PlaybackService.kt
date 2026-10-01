@@ -14,6 +14,10 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.ListenableFuture
 import dev.cued.app.CuedApp
 import dev.cued.app.MainActivity
+import dev.cued.app.lockscreen.LockScreenGate
+import dev.cued.app.widget.WidgetState
+import androidx.media3.common.Player
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +35,29 @@ import kotlinx.coroutines.guava.future
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var lockScreen: LockScreenGate? = null
+    private var widgetKey: String? = null
+
+    /** Feeds the home-screen widget a snapshot whenever the track or play state changes. */
+    private val widgetListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (!events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED)) return
+            publishWidget(player)
+        }
+    }
+
+    private fun publishWidget(player: Player, force: Boolean = false) {
+        val item = player.currentMediaItem
+        val playing = player.isPlaying || (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING)
+        val key = "${item?.mediaId}|$playing|${item?.mediaMetadata?.title}"
+        if (!force && key == widgetKey) return
+        widgetKey = key
+        val title = item?.mediaMetadata?.title?.toString()
+        val artist = item?.mediaMetadata?.artist?.toString()
+        val uri = item?.localConfiguration?.uri?.toString()
+        val art = item?.mediaMetadata?.artworkUri
+        scope.launch { runCatching { WidgetState.publish(this@PlaybackService, title, artist, playing, uri, art) } }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +135,9 @@ class PlaybackService : MediaLibraryService() {
             .setId("cued")
             .setSessionActivity(launch)
             .build()
+        player.addListener(widgetListener)
+        publishWidget(player, force = true)
+        lockScreen = LockScreenGate(this, player, graph.settings.lockScreen, scope)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -118,6 +148,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        session?.player?.let { p ->
+            p.removeListener(widgetListener)
+            // The widget must not keep showing a pause button for a player nobody can reach.
+            CuedApp.graph(this).appScope.launch { runCatching { WidgetState.publish(this@PlaybackService, p.currentMediaItem?.mediaMetadata?.title?.toString(), p.currentMediaItem?.mediaMetadata?.artist?.toString(), false, p.currentMediaItem?.localConfiguration?.uri?.toString(), p.currentMediaItem?.mediaMetadata?.artworkUri) } }
+        }
+        lockScreen?.release(); lockScreen = null
         session?.release()
         session = null
         scope.cancel()

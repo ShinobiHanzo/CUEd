@@ -60,6 +60,7 @@ APK and publishes it on the Releases page. `.github/workflows/pages.yml` publish
 - [Downloading with spotdl](docs/downloading.md): Termux vs companion setup
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
+- [Widgets and the lock-screen player](docs/widgets-and-lockscreen.md): resizable home-screen widget, CUEd's own player above the keyguard
 - [Lyrics](docs/lyrics.md): where lyrics come from and what goes online
 - [Genres](docs/genres.md): where labels come from, normalisation, fixing existing tracks
 

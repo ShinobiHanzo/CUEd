@@ -114,6 +114,7 @@ class Settings(private val context: Context) {
         val updatesLastCheck = longPreferencesKey("updates_last_check")
         val githubToken = stringPreferencesKey("github_token")
         val debugLog = booleanPreferencesKey("debug_log")
+        val lockScreen = booleanPreferencesKey("lock_screen_player")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
         val curve = stringPreferencesKey("crossfade_curve")
@@ -169,6 +170,10 @@ class Settings(private val context: Context) {
     suspend fun setGithubToken(token: String?) = context.dataStore.edit { if (token.isNullOrBlank()) it.remove(K.githubToken) else it[K.githubToken] = token.trim() }
 
     val debugLog: Flow<Boolean> = context.dataStore.data.map { it[K.debugLog] ?: false }
+
+    /** CUEd's own full-screen player over the lock screen while music plays. Off by default: it needs the overlay permission on Android 10+. */
+    val lockScreen: Flow<Boolean> = context.dataStore.data.map { it[K.lockScreen] ?: false }
+    suspend fun setLockScreen(on: Boolean) = context.dataStore.edit { it[K.lockScreen] = on }
     suspend fun setDebugLog(on: Boolean) = context.dataStore.edit { it[K.debugLog] = on }
 
     val car: Flow<CarSettings> = context.dataStore.data.map { p ->

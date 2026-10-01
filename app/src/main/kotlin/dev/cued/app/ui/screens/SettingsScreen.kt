@@ -137,6 +137,9 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("Receive a share", "Scan a CUEd QR or tap phones")
         TextButton(onClick = onOpenReceive, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Open receiver") }
 
+        SectionHeader("Lock screen and widgets", "CUEd's own player above the keyguard, and a resizable home-screen widget")
+        LockScreenBlock(vm)
+
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
         UpdateBlock(vm)
 
@@ -145,6 +148,32 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
 
         SectionHeader("About", "CUEd: offline music player with spectrograph, crossfade and local sharing. No accounts, no telemetry, no models: every recommendation is a rule you can read in the source.")
         Spacer(Modifier.height(96.dp))
+    }
+}
+
+@Composable
+private fun LockScreenBlock(vm: SettingsViewModel) {
+    val on by vm.lockScreen.collectAsState()
+    val context = LocalContext.current
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var canOverlay by remember { mutableStateOf(dev.cued.app.lockscreen.LockScreenGate.canStart(context)) }
+    // Re-check when coming back from the system permission page.
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) canOverlay = dev.cued.app.lockscreen.LockScreenGate.canStart(context) }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        ToggleRow("Lock screen player", "Full-screen cover, clock, scrubber and controls while music plays. Swipe down to hide; the system controls stay as a fallback.", on) { vm.setLockScreen(it) }
+        if (on && !canOverlay) {
+            Text("Android needs \"display over other apps\" for CUEd to put its player above the lock screen. Nothing else uses this permission.", style = MaterialTheme.typography.bodySmall, color = Muted)
+            TextButton(onClick = { runCatching { context.startActivity(dev.cued.app.lockscreen.LockScreenGate.overlaySettingsIntent(context)) } }) { Text("Allow display over other apps") }
+        }
+        Text("Widget: long-press your home screen → Widgets → CUEd. Resize it for a bar, a card or a tall tile with the cover.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
+        val awm = remember { android.appwidget.AppWidgetManager.getInstance(context) }
+        if (awm.isRequestPinAppWidgetSupported) {
+            TextButton(onClick = { runCatching { awm.requestPinAppWidget(android.content.ComponentName(context, dev.cued.app.widget.CuedWidgetReceiver::class.java), null, null) } }) { Text("Add widget to home screen") }
+        }
     }
 }
 

@@ -421,6 +421,10 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun lookupGenresOnline() = graph.genres.lookupOnlineAsync()
     fun cancelGenres() = graph.genres.cancel()
 
+    // ---- Lock screen + widgets ----
+    val lockScreen: StateFlow<Boolean> = graph.settings.lockScreen.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setLockScreen(on: Boolean) = viewModelScope.launch { graph.settings.setLockScreen(on) }
+
     // ---- Updates ----
     val update: StateFlow<UpdateManager.State> = graph.updates.state
     val updateSettings: StateFlow<UpdateSettings> = graph.settings.updates.stateIn(viewModelScope, SharingStarted.Eagerly, UpdateSettings(true, 0L, null))

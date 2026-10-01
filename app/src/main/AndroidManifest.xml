@@ -21,6 +21,9 @@
     <!-- In-app updates: hand a verified APK to the system installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Lock-screen player: Android 10+ only lets a background service open an activity with this -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- NFC tap-to-share -->
     <uses-permission android:name="android.permission.NFC" />
 
@@ -106,6 +109,30 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Full-screen player drawn above the keyguard (Settings → Lock screen) -->
+        <activity
+            android:name=".lockscreen.LockScreenActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="false"
+            android:theme="@style/Theme.CUEd" />
+
+        <!-- Home-screen widget -->
+        <receiver
+            android:name=".widget.CuedWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cued_widget_info" />
+        </receiver>
 
         <service
             android:name=".playback.PlaybackService"
