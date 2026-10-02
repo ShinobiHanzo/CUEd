@@ -15,6 +15,7 @@ import dev.cued.app.playback.CarModeDetector
 import dev.cued.app.playback.PlayerHolder
 import dev.cued.app.share.ShareServer
 import dev.cued.app.update.UpdateManager
+import dev.cued.app.support.BugReporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -68,6 +69,7 @@ class Graph(val app: Application) {
     val lyrics: LyricsRepository by lazy { LyricsRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val genres: GenreRepository by lazy { GenreRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val updates: UpdateManager by lazy { UpdateManager(app, settings, appScope) }
+    val bugs: BugReporter by lazy { BugReporter(app, settings, appScope) }
 
     init {
         // New or previously unlabelled files get their tag genres read after each scan.

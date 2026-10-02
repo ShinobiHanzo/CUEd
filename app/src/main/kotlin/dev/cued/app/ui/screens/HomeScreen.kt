@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,12 +45,27 @@ fun HomeScreen(
     onTrackMore: (TrackEntity) -> Unit,
     updateAvailable: String? = null,
     onUpdate: () -> Unit = {},
+    crashed: Boolean = false,
+    onReportCrash: () -> Unit = {},
+    onDismissCrash: () -> Unit = {},
 ) {
     val lists by vm.smartLists.collectAsState()
     val scanning by vm.scanning.collectAsState()
     val pending by vm.analysisPending.collectAsState()
 
     LazyColumn(Modifier.fillMaxWidth()) {
+        if (crashed) item {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clickable(onClick = onReportCrash)
+                    .background(dev.cued.app.ui.theme.Ink3, androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Default.BugReport, contentDescription = null, tint = dev.cued.app.ui.theme.Amber)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) { Text("CUEd crashed last time", style = MaterialTheme.typography.bodyMedium); Text("Tap to report it with the crash details", style = MaterialTheme.typography.bodySmall, color = Muted) }
+                TextButton(onClick = onDismissCrash) { Text("Dismiss") }
+            }
+        }
         if (updateAvailable != null) item {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clickable(onClick = onUpdate)

@@ -30,12 +30,40 @@ object DebugLog {
     fun init(context: Context, versionName: String) {
         file = File(File(context.filesDir, "logs").apply { mkdirs() }, "cued.log")
         appInfo = "CUEd $versionName · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}"
+        crashFile = File(context.filesDir, "logs/crash.txt")
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching { write("E", "crash", "uncaught on ${t.name}: ${Log.getStackTraceString(e)}", force = true) }
+            // Marker for the next launch: Home offers to report it.
+            runCatching { crashFile?.writeText("${e::class.java.simpleName}: ${e.message}\n" + Log.getStackTraceString(e).take(6_000) + "\n\n--- last lines ---\n" + recent(80)) }
             prev?.uncaughtException(t, e)
         }
     }
+
+    private var crashFile: File? = null
+    val header: String get() = appInfo
+
+    /** The crash recorded by the uncaught handler on a previous run, if any. */
+    fun pendingCrash(): String? = crashFile?.takeIf { it.exists() && it.length() > 0 }?.readText()
+    fun clearCrash() { crashFile?.delete() }
+
+    /** The last [maxBytes] of the log file (or the in-memory ring if the file is empty), oldest first. */
+    @Synchronized
+    fun tail(maxBytes: Int): String {
+        val f = file
+        val text = if (f != null && f.exists() && f.length() > 0) runCatching { f.readText() }.getOrDefault("") else ring.joinToString("\n")
+        if (text.length <= maxBytes) return text
+        val cut = text.takeLast(maxBytes)
+        return cut.substringAfter('\n', cut)
+    }
+
+    private val SECRETS = listOf(
+        Regex("""gh[pousr]_[A-Za-z0-9]{20,}"""), Regex("""github_pat_[A-Za-z0-9_]{20,}"""),
+        Regex("""(?i)bearer\s+[A-Za-z0-9._\-]{8,}"""), Regex("""\b[0-9a-f]{32}\b"""), Regex("""(?i)(client_secret|access_token|refresh_token)=[^&\s]+"""),
+    )
+
+    /** Strips anything token-shaped before a log leaves the phone in a bug report. */
+    fun redact(text: String): String = SECRETS.fold(text) { acc, re -> acc.replace(re) { m -> if (m.value.contains('=')) m.value.substringBefore('=') + "=[redacted]" else "[redacted]" } }
 
     fun d(tag: String, msg: String) { Log.d("CUEd/$tag", msg); if (enabled) write("D", tag, msg) }
     fun i(tag: String, msg: String) { Log.i("CUEd/$tag", msg); if (enabled) write("I", tag, msg) }

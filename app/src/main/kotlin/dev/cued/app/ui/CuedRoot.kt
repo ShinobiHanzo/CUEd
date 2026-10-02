@@ -120,6 +120,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var sheetTrack by remember { mutableStateOf<TrackEntity?>(null) }
+    var crash by remember { mutableStateOf(dev.cued.app.util.DebugLog.pendingCrash()) }
+    dev.cued.app.ui.components.BugReportDialog(graph.bugs)
     var pendingDownload by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
@@ -228,6 +230,13 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         lvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
                         updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version,
                         onUpdate = { nav.navigate(Tab.SETTINGS.route) { launchSingleTop = true } },
+                        crashed = crash != null,
+                        onReportCrash = {
+                            val c = crash ?: return@HomeScreen
+                            graph.bugs.open(dev.cued.app.support.BugReporter.Prefill(title = "Crash: " + c.lineSequence().first().take(120), description = "CUEd crashed on the previous run.\n\n```\n${c.take(5_000)}\n```"))
+                            dev.cued.app.util.DebugLog.clearCrash(); crash = null
+                        },
+                        onDismissCrash = { dev.cued.app.util.DebugLog.clearCrash(); crash = null },
                     )
                 }
                 composable(Tab.LIBRARY.route) {

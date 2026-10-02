@@ -16,6 +16,7 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Tempo-match (separate mode, off by default) | "Closest common factor": the incoming track is matched at 1:1, 2:1, 1:2, 3:2, 2:3, 4:3, 3:4, 3:1 or 1:3, whichever needs the least stretch; both decks glide to the incoming tempo; blend starts on a beat; falls back to the standard crossfade when tempos don't relate | `core/.../mix/TempoMatcher.kt`, `Crossfade.kt` |
 | Silence skip | Optional: cuts quiet stretches longer than a tolerance (threshold in dBFS), position stays accurate because dropped frames are reported to the audio sink | `app/.../playback/SilenceSkipProcessor.kt` |
 | Library browsing | Artists (A–Z rail) → artist page (albums, singles, loose tracks, appears on) → numbered album page; Albums grid; Tracks; Genres. Search narrows the open view | `core/library/Discography.kt`, `ui/screens/ArtistScreen.kt`, `AlbumScreen.kt` |
+| Bug reports | Settings → Report a bug (also on failed downloads and after a crash): description + redacted recent debug log → public GitHub issue, via the API with a token or the prefilled browser form without one | `support/BugReporter.kt` |
 | Car mode | Sidebar toggle (or automatic on car UI mode): one screen of oversized controls, quick-play tiles, voice button, spoken replies. Android Auto browse tree via `MediaLibraryService` | `ui/screens/CarModeScreen.kt`, `playback/LibraryTree.kt` |
 | Widget and lock screen | Resizable home-screen widget (bar, card, tall tile) fed by the playback service; opt-in full-screen player above the keyguard with clock, cover, scrubber and controls | `widget/`, `lockscreen/` |
 | Voice | In-app mic, Google Assistant and Android Auto ("play <x> on CUEd"). Rule-based command parser, no model | `core/.../voice/VoiceCommands.kt`, `app/.../playback/VoiceResolver.kt` |
@@ -63,6 +64,7 @@ APK and publishes it on the Releases page. `.github/workflows/pages.yml` publish
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
 - [Widgets and the lock-screen player](docs/widgets-and-lockscreen.md): resizable home-screen widget, CUEd's own player above the keyguard
+- [Bug reports](docs/bug-reports.md): what Report a bug sends, where, and how to read it
 - [Library](docs/library.md): artists → albums → tracks, how grouping works
 - [Lyrics](docs/lyrics.md): where lyrics come from and what goes online
 - [Genres](docs/genres.md): where labels come from, normalisation, fixing existing tracks

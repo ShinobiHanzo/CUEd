@@ -42,6 +42,7 @@ import dev.cued.core.mix.CrossfadeCurve
 
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
+    val context = LocalContext.current
     val pb by vm.playback.collectAsState()
     val ui by vm.ui.collectAsState()
     val pending by vm.analysisPending.collectAsState()
@@ -146,6 +147,13 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("Debug log", "Off by default. On: downloads, playback errors, updates and crashes are written to a private file you can share.")
         DebugBlock(vm)
 
+        SectionHeader("Report a bug", "Sends your description and the recent log to a public GitHub issue, where the maintainers read and fix things")
+        val graph = dev.cued.app.ui.LocalGraph.current
+        Row(Modifier.padding(horizontal = 8.dp)) {
+            TextButton(onClick = { graph.bugs.open() }) { Text("Report a bug") }
+            TextButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(dev.cued.app.support.BugReporter.ISSUES_URL))) }) { Text("See open issues") }
+        }
+
         SectionHeader("About", "CUEd: offline music player with spectrograph, crossfade and local sharing. No accounts, no telemetry, no models: every recommendation is a rule you can read in the source.")
         Spacer(Modifier.height(96.dp))
     }
@@ -229,8 +237,9 @@ private fun UpdateBlock(vm: SettingsViewModel) {
             }
         }
         ToggleRow("Check automatically", "Once a day when the app opens. One request to api.github.com.", us.autoCheck) { vm.setUpdatesAuto(it) }
-        OutlinedTextField(value = token, onValueChange = { token = it }, singleLine = true, label = { Text("GitHub token (only while the repo is private)") }, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(value = token, onValueChange = { token = it }, singleLine = true, label = { Text("GitHub token (optional: lets Report a bug post straight from the app)") }, modifier = Modifier.fillMaxWidth(),
             trailingIcon = { TextButton(onClick = { vm.setGithubToken(token) }) { Text("Save") } })
+        Text("Token scope: fine-grained with Issues: write on ShinobiHanzo/CUEd, or classic public_repo. Stored only on this phone.", style = MaterialTheme.typography.bodySmall, color = Muted)
         Text("Manual downloads: ${UpdateManager.RELEASES_URL}", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 4.dp))
     }
 }

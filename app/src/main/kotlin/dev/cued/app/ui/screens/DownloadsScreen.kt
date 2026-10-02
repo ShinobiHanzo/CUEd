@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSourceConsumed: () -> Unit = {}) {
     val jobs by vm.jobs.collectAsState()
     val settings by vm.settings.collectAsState()
+    val bugs = dev.cued.app.ui.LocalGraph.current.bugs
     var source by remember { mutableStateOf("") }
     var sharedText by remember { mutableStateOf<String?>(null) }
     // Shared text is usually "Song by Artist https://…": keep the link for the box, remember the prose as a search hint.
@@ -177,7 +178,12 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     },
                     headlineContent = { Text(j.title ?: j.source, maxLines = 1) },
                     supportingContent = { Text("${j.backend.lowercase()} · ${j.status.lowercase()}${j.message?.let { " · $it" } ?: ""}", maxLines = 2, color = Muted) },
-                    trailingContent = { if (j.status == DownloadManager.STATUS_FAILED) TextButton(onClick = { vm.retry(j.id) }) { Text("Retry") } },
+                    trailingContent = {
+                        if (j.status == DownloadManager.STATUS_FAILED) Row {
+                            TextButton(onClick = { vm.retry(j.id) }) { Text("Retry") }
+                            TextButton(onClick = { bugs.open(dev.cued.app.support.BugReporter.Prefill(title = "Download failed: ${(j.message ?: "unknown error").take(80)}", description = "Source: ${j.source}\nBackend: ${j.backend}\nError: ${j.message}\n\nWhat I expected: ")) }) { Text("Report") }
+                        }
+                    },
                 )
                 if (j.status == DownloadManager.STATUS_RUNNING) LinearProgressIndicator(progress = { j.progress }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             }
