@@ -68,17 +68,17 @@ fun ArtistScreen(
     val artist = index.artist(name)
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim()
-    fun List<Discography.Album<TrackEntity>>.hit() = if (q.isBlank()) this else filter { a -> a.name.contains(q, true) || a.tracks.any { it.title.contains(q, true) } }
-    fun List<TrackEntity>.hit() = if (q.isBlank()) this else filter { it.title.contains(q, true) || it.album.contains(q, true) }
+    fun List<Discography.Album<TrackEntity>>.hitAlbums() = if (q.isBlank()) this else filter { a -> a.name.contains(q, true) || a.tracks.any { it.title.contains(q, true) } }
+    fun List<TrackEntity>.hitTracks() = if (q.isBlank()) this else filter { it.title.contains(q, true) || it.album.contains(q, true) }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text(name) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } })
     }) { pad ->
         if (artist == null) { Column(Modifier.padding(pad).fillMaxSize()) { EmptyHint("No tracks by $name in the library") }; return@Scaffold }
-        val albums = artist.albums.hit()
-        val singles = artist.singles.hit()
-        val loose = artist.loose.hit()
-        val appears = artist.appearsOn.hit()
+        val albums = artist.albums.hitAlbums()
+        val singles = artist.singles.hitAlbums()
+        val loose = artist.loose.hitTracks()
+        val appears = artist.appearsOn.hitTracks()
         val everything = remember(artist) { artist.ownTracks }
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             item {

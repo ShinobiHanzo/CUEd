@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -97,6 +101,6 @@ fun NumberedTrackRow(track: TrackEntity, number: Int, playing: Boolean, onClick:
             Text(track.artist, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(formatMs(track.durationMs), style = MaterialTheme.typography.bodySmall, color = Muted)
-        androidx.compose.material3.IconButton(onClick = onMore) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.MoreVert, contentDescription = "More") }
+        IconButton(onClick = onMore) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
     }
 }
