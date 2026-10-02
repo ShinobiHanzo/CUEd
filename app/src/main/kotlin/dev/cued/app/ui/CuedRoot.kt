@@ -65,6 +65,8 @@ import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
+import dev.cued.app.ui.screens.AlbumScreen
+import dev.cued.app.ui.screens.ArtistScreen
 import dev.cued.app.ui.screens.LongPlaysScreen
 import dev.cued.app.ui.screens.UNLABELLED
 import dev.cued.app.ui.screens.NowPlayingScreen
@@ -229,7 +231,28 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     )
                 }
                 composable(Tab.LIBRARY.route) {
-                    LibraryScreen(lvm, player.trackId, onPlay = play, onTrackMore = more, onOpenGenre = { nav.navigate("genre/${URLEncoder.encode(it, "UTF-8")}") })
+                    LibraryScreen(
+                        lvm, player.trackId, onPlay = play, onTrackMore = more,
+                        onOpenGenre = { nav.navigate("genre/${URLEncoder.encode(it, "UTF-8")}") },
+                        onOpenArtist = { nav.navigate("artist/${URLEncoder.encode(it, "UTF-8")}") },
+                        onOpenAlbum = { artist, album -> nav.navigate("album/${URLEncoder.encode(artist, "UTF-8")}/${URLEncoder.encode(album, "UTF-8")}") },
+                    )
+                }
+                composable("artist/{name}") { e ->
+                    val name = java.net.URLDecoder.decode(e.arguments!!.getString("name")!!, "UTF-8")
+                    ArtistScreen(
+                        lvm, name, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
+                        onOpenAlbum = { artist, album -> nav.navigate("album/${URLEncoder.encode(artist, "UTF-8")}/${URLEncoder.encode(album, "UTF-8")}") },
+                    )
+                }
+                composable("album/{artist}/{album}") { e ->
+                    val artist = java.net.URLDecoder.decode(e.arguments!!.getString("artist")!!, "UTF-8")
+                    val album = java.net.URLDecoder.decode(e.arguments!!.getString("album")!!, "UTF-8")
+                    AlbumScreen(
+                        lvm, artist, album, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
+                        onOpenArtist = { nav.navigate("artist/${URLEncoder.encode(it, "UTF-8")}") },
+                        onSaveAsPlaylist = { name, ids -> lvm.saveAsPlaylist(name, ids) { scope.launch { snackbar.showSnackbar("Saved as $name") } } },
+                    )
                 }
                 composable(Tab.PLAYLISTS.route) { PlaylistsScreen(lvm, onOpen = { nav.navigate("playlist/$it") }) }
                 composable(Tab.DOWNLOADS.route) {
@@ -303,6 +326,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onShare = { nav.navigate("share/${tr.id}") },
             onSimilar = { nav.navigate("similar/${tr.id}") },
             onAnalyse = { lvm.analyse(tr.id) },
+            onArtist = { nav.navigate("artist/${URLEncoder.encode(tr.albumArtist?.takeIf { it.isNotBlank() } ?: dev.cued.core.library.Discography.primaryArtist(tr.artist), "UTF-8")}") },
+            onAlbum = { nav.navigate("album/${URLEncoder.encode(tr.albumArtist?.takeIf { it.isNotBlank() } ?: dev.cued.core.library.Discography.primaryArtist(tr.artist), "UTF-8")}/${URLEncoder.encode(tr.album, "UTF-8")}") },
             onToggleKind = { lvm.setKind(tr.id, if (tr.isLong) TrackEntity.KIND_MUSIC else TrackEntity.KIND_LONG) },
             onUnlockGenres = { lvm.unlockGenres(tr.id) },
         )

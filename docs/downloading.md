@@ -109,3 +109,24 @@ on every Android version, so most downloads carry their words regardless.
 When a track was downloaded through CUEd its source URL is stored, so sharing it as a
 link lets the other phone re-download rather than copy the file. For files that arrived
 some other way you can set the source link from the track menu.
+
+## When YouTube says "Sign in to confirm you're not a bot"
+
+That message comes from YouTube's web client. CUEd's built-in downloader uses
+NewPipeExtractor, which (from v0.26) takes streams from YouTube's Android and
+Vision OS clients instead, so updating CUEd is the first fix. If it still happens,
+it is the network: try mobile data instead of Wi-Fi (or the other way round), as
+YouTube challenges some IP ranges. The error in the app says which it is.
+
+## Termux: "libpython3.13.so not found"
+
+Termux upgraded its Python (3.13 → 3.14) after spotdl was installed, so pip
+packages with native code still point at the old libpython. Downloads →
+**Repair spotdl** reinstalls spotdl for the current Python (it runs
+`pip install --force-reinstall spotdl` through Termux and shows the tail of the
+output). If the repair itself fails on `curl_cffi`, run in Termux:
+
+```
+pkg install -y libcurl clang rust
+pip install --force-reinstall --no-cache-dir spotdl
+```

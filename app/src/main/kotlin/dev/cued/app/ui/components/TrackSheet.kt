@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -71,6 +73,8 @@ fun TrackSheet(
     onShare: () -> Unit,
     onSimilar: () -> Unit,
     onAnalyse: () -> Unit,
+    onArtist: (() -> Unit)? = null,
+    onAlbum: (() -> Unit)? = null,
     onToggleKind: () -> Unit = {},
     onUnlockGenres: () -> Unit = {},
 ) {
@@ -99,6 +103,8 @@ fun TrackSheet(
             SheetItem(Icons.AutoMirrored.Filled.Label, "Edit genres" + (if (genres.isNotEmpty()) " (${genres.joinToString(", ")})" else "") + (if (track.genresLocked) " · hand-edited" else "")) { showGenres = true }
             if (track.genresLocked) SheetItem(Icons.Default.LockOpen, "Let automatic labelling change this track again") { onUnlockGenres(); onDismiss() }
             SheetItem(Icons.Default.Timeline, "More like this") { onSimilar(); onDismiss() }
+            if (onArtist != null) SheetItem(Icons.Default.Person, "Go to artist") { onArtist(); onDismiss() }
+            if (onAlbum != null && track.album.isNotBlank()) SheetItem(Icons.Default.Album, "Go to album") { onAlbum(); onDismiss() }
             SheetItem(Icons.Default.Share, "Share (QR / NFC / local)") { onShare(); onDismiss() }
             SheetItem(Icons.Default.Link, if (track.sourceLink == null) "Set source link (for re-download sharing)" else "Source: ${track.sourceLink}") { showLink = true }
             if (!track.isLong) SheetItem(Icons.Default.GraphicEq, if (track.analysedAt == null) "Analyse tempo" else "Re-analyse tempo") { onAnalyse(); onDismiss() }

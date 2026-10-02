@@ -122,8 +122,12 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     Text(if (!installed) "Termux not installed. Get it from F-Droid, then:" else if (!perm) "Termux found. Grant CUEd the 'Run commands in Termux' permission in system settings, then:" else "Termux ready.", color = if (installed && perm) Teal else Muted)
                     Text("pkg install python ffmpeg\npip install spotdl\ntermux-setup-storage\necho allow-external-apps=true >> ~/.termux/termux.properties", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
                     val test by vm.termuxTest.collectAsState()
-                    TextButton(onClick = { vm.testTermux() }, enabled = installed && perm) { Text("Test spotdl in Termux") }
-                    test?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.startsWith("Termux OK")) Teal else Muted) }
+                    Row {
+                        TextButton(onClick = { vm.testTermux() }, enabled = installed && perm) { Text("Test spotdl in Termux") }
+                        TextButton(onClick = { vm.repairTermux() }, enabled = installed && perm) { Text("Repair spotdl") }
+                    }
+                    test?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.startsWith("Termux OK") || it.startsWith("Repair finished")) Teal else Muted) }
+                    if (test?.contains("libpython", true) == true) Text("Termux's Python was upgraded after spotdl was installed, so its native modules point at the old libpython. Repair reinstalls spotdl for the current Python.", style = MaterialTheme.typography.bodySmall, color = Teal)
                 }
                 DownloadBackend.COMPANION -> Column(Modifier.padding(16.dp)) {
                     Text("Run tools/spotdl-server/server.py on any computer or Pi on the same Wi-Fi. Enter its address:", color = Muted, style = MaterialTheme.typography.bodySmall)

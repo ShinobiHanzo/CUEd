@@ -47,6 +47,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             nativeTest.value = dev.cued.app.download.native.NativeDownloader(context, s.spotifyClientId, s.spotifyClientSecret).selfTest()
         }
     }
+    fun repairTermux() { termuxTest.value = "Repairing spotdl in Termux. This reinstalls it for the current Python and can take several minutes…"; if (!TermuxDownloader(context).repair()) termuxTest.value = "Termux not installed or permission not granted" }
     fun testTermux() { termuxTest.value = "Running in Termux…"; if (!TermuxDownloader(context).test()) termuxTest.value = "Termux not installed or permission not granted" }
 
     /**

@@ -33,7 +33,12 @@ class YouTubeSource {
     }
 
     fun info(url: String): Pair<StreamInfo, AudioStream> {
-        val info = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val info = try { StreamInfo.getInfo(ServiceList.YouTube, url) } catch (e: org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException) {
+            val m = e.message.orEmpty()
+            if (m.contains("not a bot", true) || m.contains("Sign in", true) || m.contains("reloaded", true))
+                throw IllegalStateException("YouTube is challenging this network (\"$m\"). This usually clears on another network (mobile data vs Wi-Fi) or after updating CUEd, whose YouTube client follows the NewPipe project's.", e)
+            throw e
+        }
         val audio = info.audioStreams
             .filter { it.isUrl && it.content.isNotBlank() }
             .sortedWith(compareByDescending<AudioStream> { it.format?.name == "M4A" }.thenByDescending { it.averageBitrate })

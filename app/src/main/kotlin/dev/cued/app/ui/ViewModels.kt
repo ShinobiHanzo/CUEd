@@ -21,6 +21,8 @@ import dev.cued.app.data.UiSettings
 import dev.cued.app.data.db.DownloadJobEntity
 import dev.cued.app.data.db.PlaylistEntity
 import dev.cued.app.data.db.TrackEntity
+import dev.cued.core.library.Discography
+import kotlinx.coroutines.flow.flowOn
 import dev.cued.app.download.CompanionDownloader
 import dev.cued.app.download.TermuxDownloader
 import dev.cued.app.playback.MediaItems
@@ -83,6 +85,11 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     val tracks: StateFlow<List<TrackEntity>> = query.flatMapLatest { lib.search(it) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val genreMap: StateFlow<Map<Long, List<String>>> = lib.genreMap.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val genres: StateFlow<List<String>> = lib.genres.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Artists → albums → tracks, rebuilt whenever the library changes. */
+    val discography: StateFlow<Discography.Index<TrackEntity>> = lib.tracks
+        .map { ts -> Discography.build(ts) { t -> Discography.Fields(t.title, t.artist, t.albumArtist, t.album, t.trackNo, t.discNo, t.year, t.durationMs) } }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discography.Index.empty())
     val playlists: StateFlow<List<PlaylistEntity>> = lib.playlists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val longPlays: StateFlow<List<TrackEntity>> = lib.longPlays.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val unlabelled: StateFlow<List<TrackEntity>> = graph.genres.unlabelled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -296,6 +303,7 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
     val nativeTest: StateFlow<String?> = graph.downloads.nativeTest
     fun testNative() = graph.downloads.testNative()
     fun testTermux() = graph.downloads.testTermux()
+    fun repairTermux() = graph.downloads.repairTermux()
 }
 
 // ---------------------------------------------------------------------------

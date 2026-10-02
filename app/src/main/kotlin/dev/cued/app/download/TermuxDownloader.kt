@@ -59,6 +59,25 @@ class TermuxDownloader(private val context: Context) {
     }
 
     /**
+     * Reinstalls spotdl for whatever Python Termux currently ships. After a
+     * `pkg upgrade` moves Python to a new minor version (3.13 → 3.14), pip
+     * packages with native code (curl_cffi, pydantic-core) still point at the
+     * old libpython and spotdl dies with "libpython3.13.so not found".
+     */
+    fun repair(): Boolean {
+        if (!isTermuxInstalled() || !hasPermission()) return false
+        val script = "pkg install -y python ffmpeg libcurl clang rust 2>&1 | tail -2; " +
+            "pip install --upgrade --force-reinstall --no-cache-dir spotdl 2>&1 | tail -6; " +
+            "echo; echo \"python: $(python3 --version 2>&1)\"; echo \"spotdl: $(spotdl --version 2>&1 | tail -1)\""
+        val resultIntent = Intent(context, TermuxResultReceiver::class.java)
+            .setAction(TermuxResultReceiver.ACTION_RESULT)
+            .putExtra(TermuxResultReceiver.EXTRA_JOB_ID, REPAIR_JOB_ID)
+        val pending = PendingIntent.getBroadcast(context, REPAIR_JOB_ID.toInt(), resultIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
+        context.startForegroundService(shellCommand(script, emptyList(), "CUEd: repairing spotdl", pending))
+        return true
+    }
+
+    /**
      * Runs [script] through a Termux login shell. RUN_COMMAND executes a binary
      * with a bare environment, which breaks Python's native modules ("libpython
      * not found"); a login shell loads Termux's profile, and we also pin
@@ -87,5 +106,6 @@ class TermuxDownloader(private val context: Context) {
         const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
         const val TERMUX_HOME = "/data/data/com.termux/files/home"
         const val TEST_JOB_ID = -1L
+        const val REPAIR_JOB_ID = -2L
     }
 }

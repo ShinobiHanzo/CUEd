@@ -197,9 +197,12 @@ class LibraryRepository(
                 MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
                 MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.DURATION,
                 MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.TRACK, MediaStore.Audio.Media.YEAR,
             )
             val hasGenreColumn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
             if (hasGenreColumn) projection += MediaStore.Audio.Media.GENRE
+            val hasAlbumArtist = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+            if (hasAlbumArtist) projection += ALBUM_ARTIST_COLUMN
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 15000"
             val existing = db.tracks().allIncludingMissing().associateBy { it.mediaStoreId }
             context.contentResolver.query(
@@ -214,6 +217,9 @@ class LibraryRepository(
                 val iAdded = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
                 val iData = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
                 val iGenre = if (hasGenreColumn) c.getColumnIndex(MediaStore.Audio.Media.GENRE) else -1
+                val iTrack = c.getColumnIndex(MediaStore.Audio.Media.TRACK)
+                val iYear = c.getColumnIndex(MediaStore.Audio.Media.YEAR)
+                val iAlbumArtist = if (hasAlbumArtist) c.getColumnIndex(ALBUM_ARTIST_COLUMN) else -1
                 while (c.moveToNext()) {
                     val msId = c.getLong(iId)
                     seen += msId
@@ -226,18 +232,27 @@ class LibraryRepository(
                     val added = c.getLong(iAdded) * 1000L
                     val path = c.getString(iData)
                     val genre = if (iGenre >= 0) c.getString(iGenre) else null
+                    // MediaStore packs disc and track as disc*1000 + track.
+                    val rawTrack = if (iTrack >= 0 && !c.isNull(iTrack)) c.getInt(iTrack) else 0
+                    val discNo = if (rawTrack >= 1000) rawTrack / 1000 else 0
+                    val trackNo = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack.coerceAtLeast(0)
+                    val year = if (iYear >= 0 && !c.isNull(iYear)) c.getInt(iYear).takeIf { it in 1900..2100 } ?: 0 else 0
+                    val albumArtist = if (iAlbumArtist >= 0) c.getString(iAlbumArtist)?.takeIf { it.isNotBlank() && it != "<unknown>" } else null
                     val old = existing[msId]
                     if (old == null) {
                         val id = db.tracks().insert(
                             TrackEntity(
                                 mediaStoreId = msId, uri = uri, path = path, title = title, artist = artist,
                                 album = album, albumId = albumId, durationMs = duration, addedAt = added,
+                                trackNo = trackNo, discNo = discNo, year = year, albumArtist = albumArtist,
                                 kind = if (duration > TrackEntity.LONG_THRESHOLD_MS) TrackEntity.KIND_LONG else TrackEntity.KIND_MUSIC,
                             )
                         )
                         if (id > 0 && !genre.isNullOrBlank()) db.tracks().setGenres(id, GenreNormalizer.normalize(genre))
-                    } else if (old.title != title || old.artist != artist || old.album != album || old.uri != uri || old.missing || old.durationMs != duration) {
-                        db.tracks().update(old.copy(title = title, artist = artist, album = album, albumId = albumId, uri = uri, path = path, durationMs = duration, missing = false))
+                    } else if (old.title != title || old.artist != artist || old.album != album || old.uri != uri || old.missing || old.durationMs != duration ||
+                        old.trackNo != trackNo || old.discNo != discNo || old.year != year || old.albumArtist != albumArtist) {
+                        db.tracks().update(old.copy(title = title, artist = artist, album = album, albumId = albumId, uri = uri, path = path, durationMs = duration, missing = false,
+                            trackNo = trackNo, discNo = discNo, year = year, albumArtist = albumArtist))
                     }
                 }
             }
@@ -250,6 +265,8 @@ class LibraryRepository(
 
     companion object {
         const val SESSION_GAP_MS = 30 * 60 * 1000L
+        /** MediaStore.Audio.AudioColumns.ALBUM_ARTIST; the constant is API 30 but the column name is stable. */
+        private const val ALBUM_ARTIST_COLUMN = "album_artist"
         const val SKIP_THRESHOLD = 0.4f
 
         fun albumArtUri(albumId: Long?): Uri? = albumId?.let {

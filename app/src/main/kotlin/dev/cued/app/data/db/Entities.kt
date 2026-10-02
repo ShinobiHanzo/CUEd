@@ -42,6 +42,13 @@ data class TrackEntity(
     @ColumnInfo(defaultValue = "0") val resumeMs: Long = 0L,
     /** True once the user edits genres by hand; automatic re-labelling then leaves this track alone. */
     @ColumnInfo(defaultValue = "0") val genresLocked: Boolean = false,
+    /** Position on its album (0 = unknown); used to order album pages. */
+    @ColumnInfo(defaultValue = "0") val trackNo: Int = 0,
+    @ColumnInfo(defaultValue = "0") val discNo: Int = 0,
+    /** Release year from tags (0 = unknown). */
+    @ColumnInfo(defaultValue = "0") val year: Int = 0,
+    /** Album-artist tag when the file has one; groups compilations and "feat." tracks under the right artist. */
+    val albumArtist: String? = null,
 ) {
     val isLong: Boolean get() = kind == KIND_LONG
 

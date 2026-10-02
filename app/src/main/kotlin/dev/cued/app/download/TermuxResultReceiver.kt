@@ -9,17 +9,17 @@ import dev.cued.app.CuedApp
 class TermuxResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_RESULT) return
-        val jobId = intent.getLongExtra(EXTRA_JOB_ID, -2L)
-        if (jobId < -1L) return
+        val jobId = intent.getLongExtra(EXTRA_JOB_ID, Long.MIN_VALUE)
+        if (jobId == Long.MIN_VALUE) return
         val result = intent.getBundleExtra("result")
         val exit = result?.getInt("exitCode", -1) ?: -1
         val stdout = result?.getString("stdout").orEmpty()
         val stderr = result?.getString("stderr").orEmpty()
         val ok = exit == 0
         dev.cued.app.util.DebugLog.i("termux", "result job=$jobId exit=$exit err=${result?.getInt("err", 0)} errmsg=${result?.getString("errmsg")}\n--- stdout ---\n${stdout.take(4000)}\n--- stderr ---\n${stderr.take(4000)}")
-        if (jobId == TermuxDownloader.TEST_JOB_ID) {
+        if (jobId == TermuxDownloader.TEST_JOB_ID || jobId == TermuxDownloader.REPAIR_JOB_ID) {
             val text = buildString {
-                append(if (ok) "Termux OK\n" else "exit $exit\n")
+                append(if (jobId == TermuxDownloader.REPAIR_JOB_ID) (if (ok) "Repair finished\n" else "Repair exited $exit\n") else if (ok) "Termux OK\n" else "exit $exit\n")
                 append(stdout.trim())
                 if (stderr.isNotBlank()) append("\n").append(stderr.trim().lines().takeLast(4).joinToString("\n"))
             }
