@@ -2,178 +2,337 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CUEd · offline music player for Android</title>
-<meta name="description" content="CUEd: an offline-first Android music player with tempo-matched crossfade, live spectrograph, lyrics, spotdl downloads, QR/NFC sharing, car mode and voice control. No accounts, no cloud, no AI.">
+<meta name="description" content="CUEd: an offline-first Android music player with tempo-matched crossfade, live spectrograph, lyrics, built-in downloads, QR/NFC sharing, widgets, lock-screen player, car mode and voice control. No accounts, no cloud, no AI.">
+<meta name="theme-color" content="#0e0f13">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
-  :root { --ink:#0e0f13; --ink2:#16181f; --ink3:#222530; --mist:#e8eaf0; --muted:#8a90a3; --teal:#5ef2c6; --amber:#ffb86b; }
-  * { box-sizing:border-box }
-  html { scroll-behavior:smooth; scroll-padding-top:64px }
-  body { margin:0; background:var(--ink); color:var(--mist); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif }
+  :root { --ink:#0e0f13; --ink2:#16181f; --ink3:#222530; --ink4:#2c3040; --mist:#e8eaf0; --body:#cfd3dd; --muted:#8a90a3; --teal:#5ef2c6; --amber:#ffb86b; --bar:56px; --sab:env(safe-area-inset-bottom,0px) }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent }
+  html { scroll-behavior:smooth; scroll-padding-top:calc(var(--bar) + 12px) }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto } * { transition:none !important; animation:none !important } }
+  body { margin:0; background:var(--ink); color:var(--mist); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow-x:hidden }
   a { color:var(--teal) }
-  nav { position:sticky; top:0; z-index:5; background:rgba(14,15,19,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink3) }
-  nav .in { max-width:900px; margin:0 auto; padding:10px 16px; display:flex; gap:14px; align-items:center; overflow-x:auto; white-space:nowrap }
-  nav .brand { font-weight:700; color:var(--mist); text-decoration:none; margin-right:6px }
-  nav a.l { color:var(--muted); text-decoration:none; font-size:14px } nav a.l:hover { color:var(--teal) }
-  main { max-width:900px; margin:0 auto; padding:0 16px 80px }
-  .hero { display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; padding:40px 0 24px }
-  @media (max-width:640px) { .hero { grid-template-columns:1fr } .qr { justify-self:start } }
-  h1 { font-size:40px; margin:0 0 6px; letter-spacing:-.5px } h1 small { color:var(--muted); font-size:16px; font-weight:400; margin-left:8px }
-  .tag { color:var(--muted); font-size:18px; margin:0 0 18px }
-  .btn { display:inline-block; background:var(--teal); color:var(--ink); font-weight:700; padding:12px 20px; border-radius:12px; text-decoration:none }
+  button { font:inherit }
+
+  /* ---- top bar ---- */
+  .bar { position:sticky; top:0; z-index:20; height:var(--bar); background:rgba(14,15,19,.88); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid var(--ink3) }
+  .bar .in { max-width:1120px; margin:0 auto; height:100%; padding:0 12px 0 16px; display:flex; align-items:center; gap:10px }
+  .brand { display:flex; align-items:center; gap:10px; color:var(--mist); text-decoration:none; font-weight:700; font-size:18px }
+  .brand img { width:28px; height:28px; border-radius:7px }
+  .links { display:none; margin-left:auto; gap:2px }
+  .links a { color:var(--muted); text-decoration:none; font-size:13px; padding:8px 9px; border-radius:8px; white-space:nowrap; flex:none }
+  .links a:hover, .links a.on { color:var(--teal); background:var(--ink2) }
+  .ibtn { margin-left:auto; min-width:44px; height:44px; border:0; background:transparent; color:var(--mist); border-radius:12px; display:grid; place-items:center; cursor:pointer }
+  .ibtn:active { background:var(--ink3) }
+  .bar .dl { display:none }
+  @media (min-width:860px) { .links { display:flex } .ibtn { display:none } .bar .dl { display:inline-flex; margin-left:8px } }
+
+  /* ---- bottom-sheet nav (mobile) ---- */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:30; opacity:0; pointer-events:none; transition:opacity .2s }
+  .sheet { position:fixed; left:0; right:0; bottom:0; z-index:31; background:var(--ink2); border-radius:20px 20px 0 0; padding:8px 12px calc(16px + var(--sab)); transform:translateY(105%); transition:transform .25s cubic-bezier(.2,.8,.2,1); max-height:80vh; overflow:auto }
+  .sheet .grip { width:40px; height:4px; border-radius:2px; background:var(--ink4); margin:4px auto 12px }
+  .sheet a { display:flex; align-items:center; gap:12px; color:var(--mist); text-decoration:none; padding:12px 10px; border-radius:12px; min-height:48px; font-size:16px }
+  .sheet a:active, .sheet a.on { background:var(--ink3); color:var(--teal) }
+  .sheet a svg { width:22px; height:22px; color:var(--muted) }
+  .sheet .two { display:grid; grid-template-columns:1fr 1fr }
+  body.nav-open .scrim { opacity:1; pointer-events:auto } body.nav-open .sheet { transform:none } body.nav-open { overflow:hidden }
+
+  main { max-width:960px; margin:0 auto; padding:0 16px calc(96px + var(--sab)) }
+
+  /* ---- hero ---- */
+  .hero { padding:36px 0 20px; display:grid; gap:22px; grid-template-columns:1fr; align-items:center }
+  @media (min-width:860px) { .hero { grid-template-columns:1fr 220px; padding:56px 0 28px } }
+  h1 { font-size:clamp(34px,8vw,52px); line-height:1.05; margin:0 0 10px; letter-spacing:-.6px }
+  h1 small { display:block; color:var(--muted); font-size:15px; font-weight:500; letter-spacing:.4px; text-transform:uppercase; margin-top:8px }
+  .tag { color:var(--body); font-size:18px; margin:0 0 20px; max-width:560px }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; background:var(--teal); color:var(--ink); font-weight:700; padding:14px 20px; border-radius:14px; text-decoration:none; min-height:48px; border:0; cursor:pointer }
+  .btn:active { transform:scale(.98) }
   .btn.alt { background:var(--ink3); color:var(--mist); font-weight:500 }
+  .btn.wide { width:100% } @media (min-width:540px) { .btn.wide { width:auto } }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-  .qr { background:#fff; padding:10px; border-radius:14px; width:180px; height:180px } .qr svg { width:100%; height:100% }
-  .ver { color:var(--muted); font-size:14px; margin-top:10px }
-  section { border-top:1px solid var(--ink3); padding:28px 0 }
-  h2 { font-size:22px; margin:0 0 8px } h3 { font-size:16px; margin:18px 0 4px; color:var(--teal) }
-  p, li { color:#cfd3dd } ul { padding-left:20px } li { margin:4px 0 }
-  code { background:var(--ink3); padding:1px 6px; border-radius:6px; font-size:14px }
-  pre { background:var(--ink2); border:1px solid var(--ink3); padding:12px; border-radius:10px; overflow:auto; font-size:13px }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px }
-  .card { background:var(--ink2); border:1px solid var(--ink3); border-radius:14px; padding:14px } .card b { display:block; margin-bottom:4px }
-  table { border-collapse:collapse; width:100%; font-size:15px } td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--ink3); vertical-align:top } th { color:var(--muted); font-weight:500 }
-  .note { border-left:3px solid var(--amber); padding:6px 12px; color:#cfd3dd; background:var(--ink2); border-radius:0 10px 10px 0 }
-  footer { color:var(--muted); font-size:13px; padding:20px 0 }
+  .ver { color:var(--muted); font-size:14px; margin-top:12px; min-height:20px }
+  .qr { display:none; background:#fff; padding:10px; border-radius:16px; width:200px; height:200px; justify-self:end }
+  .qr object { width:100%; height:100%; pointer-events:none }
+  .qrhint { display:none; color:var(--muted); font-size:12px; text-align:center; margin-top:6px }
+  @media (min-width:860px) { .qr, .qrhint { display:block } }
+
+  /* ---- feature chips ---- */
+  .feats { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:8px 0 8px }
+  @media (min-width:640px) { .feats { grid-template-columns:repeat(3,1fr) } }
+  .feat { background:var(--ink2); border:1px solid var(--ink3); border-radius:14px; padding:12px; color:var(--body); font-size:14px; line-height:1.4 }
+  .feat b { display:block; color:var(--mist); margin-bottom:2px; font-size:15px }
+  .feat .i { width:22px; height:22px; color:var(--teal); margin-bottom:8px }
+
+  /* ---- sections as accordions on phones ---- */
+  section { border-top:1px solid var(--ink3) }
+  details > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:18px 0; min-height:56px }
+  details > summary::-webkit-details-marker { display:none }
+  details > summary h2 { font-size:20px; margin:0; flex:1 }
+  details > summary .chev { width:22px; height:22px; color:var(--muted); transition:transform .2s; flex:none }
+  details[open] > summary .chev { transform:rotate(180deg) }
+  .body { padding:0 0 22px }
+  h3 { font-size:15px; margin:18px 0 6px; color:var(--teal); text-transform:uppercase; letter-spacing:.4px }
+  p, li { color:var(--body) } p { margin:8px 0 } ul, ol { padding-left:20px; margin:8px 0 } li { margin:6px 0 }
+  code { background:var(--ink3); padding:1px 6px; border-radius:6px; font-size:14px; word-break:break-word }
+  .code { position:relative; background:var(--ink2); border:1px solid var(--ink3); border-radius:12px; margin:10px 0 }
+  .code pre { margin:0; padding:12px 92px 12px 14px; overflow:auto; font-size:13px; line-height:1.55 } .code pre code { background:none; padding:0; font-size:13px }
+  .copy { position:absolute; top:8px; right:8px; border:1px solid var(--ink4); background:var(--ink3); color:var(--mist); border-radius:10px; padding:8px 12px; min-height:36px; cursor:pointer; font-size:13px }
+  .copy.ok { color:var(--teal); border-color:var(--teal) }
+  .grid { display:grid; grid-template-columns:1fr; gap:10px } @media (min-width:640px) { .grid { grid-template-columns:repeat(auto-fit,minmax(260px,1fr)) } }
+  .card { background:var(--ink2); border:1px solid var(--ink3); border-radius:14px; padding:14px; color:var(--body); font-size:15px } .card b { display:block; color:var(--mist); margin-bottom:4px }
+  table { border-collapse:collapse; width:100%; font-size:15px } td, th { text-align:left; padding:8px 8px; border-bottom:1px solid var(--ink3); vertical-align:top } th { color:var(--muted); font-weight:500; white-space:nowrap }
+  .note { border-left:3px solid var(--amber); padding:8px 12px; color:var(--body); background:var(--ink2); border-radius:0 10px 10px 0; margin:10px 0 }
+  .steps { counter-reset:s; list-style:none; padding:0 } .steps li { position:relative; padding-left:40px; margin:10px 0 } .steps li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:2px; width:28px; height:28px; border-radius:50%; background:var(--ink3); color:var(--teal); display:grid; place-items:center; font-weight:700; font-size:14px }
+
+  /* ---- releases ---- */
+  .rel { border:1px solid var(--ink3); border-radius:14px; padding:12px 14px; margin:10px 0; background:var(--ink2) }
+  .rel .h { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap } .rel .h b { font-size:16px } .rel .h span { color:var(--muted); font-size:13px }
+  .rel pre { white-space:pre-wrap; margin:8px 0 0; font:14px/1.5 inherit; color:var(--body) }
+  .pill { display:inline-block; background:var(--ink3); color:var(--teal); border-radius:999px; padding:2px 10px; font-size:12px; font-weight:600 }
+
+  footer { color:var(--muted); font-size:13px; padding:24px 0 }
+  .fab { position:fixed; right:16px; bottom:calc(16px + var(--sab)); z-index:15; width:48px; height:48px; border-radius:50%; border:1px solid var(--ink4); background:var(--ink2); color:var(--mist); display:grid; place-items:center; opacity:0; pointer-events:none; transition:opacity .2s; cursor:pointer }
+  .fab.show { opacity:1; pointer-events:auto }
+  @media (min-width:860px) { .fab { display:none } }
 </style>
 </head>
 <body>
-<nav><div class="in">
-  <a class="brand" href="#top">CUEd</a>
-  <a class="l" href="#get">Get it</a>
-  <a class="l" href="#play">Playing</a>
-  <a class="l" href="#library">Library</a>
-  <a class="l" href="#download">Downloads</a>
-  <a class="l" href="#lyrics">Lyrics</a>
-  <a class="l" href="#share">Sharing</a>
-  <a class="l" href="#car">Car &amp; voice</a>
-  <a class="l" href="#widgets">Widgets</a>
-  <a class="l" href="#bugs">Bugs</a>
-  <a class="l" href="#podcasts">Podcasts</a>
-  <a class="l" href="#privacy">Privacy</a>
-  <a class="l" href="https://github.com/ShinobiHanzo/CUEd">Source</a>
-</div></nav>
+
+<header class="bar"><div class="in">
+  <a class="brand" href="#top"><img src="icon.svg" alt="">CUEd</a>
+  <nav class="links" aria-label="Sections">
+    <a href="#whatsnew">What's new</a><a href="#install">Install</a><a href="#play">Playing</a><a href="#library">Library</a><a href="#download">Downloads</a><a href="#lyrics">Lyrics</a><a href="#share">Sharing</a><a href="#car">Car &amp; voice</a><a href="#widgets">Widgets</a><a href="#bugs">Bugs</a><a href="#privacy">Privacy</a>
+  </nav>
+  <a class="btn dl" href="https://github.com/ShinobiHanzo/CUEd/releases/latest/download/CUEd.apk">Download</a>
+  <button class="ibtn" id="menu" aria-label="Open sections menu" aria-expanded="false" aria-controls="sheet">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+</div></header>
+
+<div class="scrim" id="scrim"></div>
+<nav class="sheet" id="sheet" aria-label="Sections">
+  <div class="grip"></div>
+  <div class="two">
+    <a href="#get">Get it</a><a href="#whatsnew">What's new</a><a href="#play">Playing</a><a href="#library">Library</a><a href="#download">Downloads</a><a href="#lyrics">Lyrics</a><a href="#share">Sharing</a><a href="#car">Car &amp; voice</a><a href="#widgets">Widgets &amp; lock screen</a><a href="#podcasts">Podcasts</a><a href="#bugs">Report a bug</a><a href="#privacy">Privacy</a>
+  </div>
+  <a href="https://github.com/ShinobiHanzo/CUEd">Source on GitHub ↗</a>
+</nav>
 
 <main id="top">
   <div class="hero">
     <div>
-      <h1>CUEd <small>for Android</small></h1>
-      <p class="tag">An offline music player with a real crossfade, a live spectrograph, lyrics, and sharing that never touches a server. No accounts. No cloud. No AI.</p>
+      <h1>CUEd <small>Offline music player for Android</small></h1>
+      <p class="tag">A real crossfade, a live spectrograph, lyrics, downloads and phone-to-phone sharing. No accounts. No cloud. No AI.</p>
       <div class="row" id="get">
-        <a class="btn" href="https://github.com/ShinobiHanzo/CUEd/releases/latest/download/CUEd.apk">Download the APK</a>
+        <a class="btn wide" href="https://github.com/ShinobiHanzo/CUEd/releases/latest/download/CUEd.apk">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
+          Download the APK
+        </a>
         <a class="btn alt" href="https://github.com/ShinobiHanzo/CUEd/releases">All releases</a>
       </div>
-      <div class="ver" id="ver">Android 8.0 or newer. Scan the code with your phone to download directly.</div>
+      <div class="ver" id="ver">Android 8.0 or newer. Free, MIT-licensed, source on GitHub.</div>
     </div>
-    <div class="qr" aria-label="QR code linking to the latest APK"><object data="qr.svg" type="image/svg+xml" style="width:100%;height:100%"></object></div>
+    <div>
+      <div class="qr" aria-label="QR code linking to the latest APK"><object data="qr.svg" type="image/svg+xml"></object></div>
+      <div class="qrhint">Scan with your phone to download</div>
+    </div>
   </div>
 
-  <section id="install">
-    <h2>Install and update</h2>
-    <ol>
-      <li>Download the APK (button or QR above) and open it. Android asks once to allow installs from your browser or file manager.</li>
-      <li>On first launch, allow access to your music. CUEd scans what is already on the phone.</li>
-      <li><b>Updating:</b> Settings → Updates → <i>Check for updates</i>. CUEd downloads the new APK, verifies its SHA-256 against the published checksum, then hands it to Android's installer. It also checks once a day by itself and shows a banner on Home. No more trips to this page.</li>
-    </ol>
-    <div class="note">Builds are signed with a public dev key so they install over each other. Only install APKs from this page or the GitHub releases.</div>
-  </section>
+  <div class="feats" aria-label="Highlights">
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17c4 0 5-10 9-10s5 10 9 10"/></svg><b>Crossfade that follows the beat</b>Standard blend, or tempo-matched at 1:1, 2:1, 3:2…</div>
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14v4M8 9v9M12 4v14M16 10v8M20 13v5"/></svg><b>Live spectrograph</b>Drawn from the audio itself. No microphone.</div>
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg><b>Downloads built in</b>Share a link, get an m4a or mp3 with cover and tags.</div>
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h2v2h-2zM18 18h1v1h-1z"/></svg><b>Share by QR or NFC</b>Track and app, phone to phone, no server.</div>
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h16M4 7h10M4 17h7"/></svg><b>Lyrics, synced</b>From the file, a sidecar, or lrclib if you allow it.</div>
+    <div class="feat"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 7h6M12 17h.01"/></svg><b>Widgets &amp; lock screen</b>Resizable widget and CUEd's own player above the keyguard.</div>
+  </div>
 
-  <section id="play">
-    <h2>Playing</h2>
-    <div class="grid">
+  <section id="whatsnew"><details open>
+    <summary><h2>What's new</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body" id="releases"><p class="muted" style="color:var(--muted)">Loading the latest releases from GitHub…</p></div>
+  </details></section>
+
+  <section id="install"><details open>
+    <summary><h2>Install and update</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <ol class="steps">
+        <li>Tap <b>Download the APK</b> and open it. Android asks once to allow installs from your browser or file manager.</li>
+        <li>On first launch, allow access to your music. CUEd scans what is already on the phone.</li>
+        <li><b>Updating:</b> Settings → Updates → <i>Check for updates</i>. CUEd downloads the new APK, verifies its SHA-256 against the published checksum, then hands it to Android's installer. It also checks once a day by itself and shows a banner on Home. No more trips to this page.</li>
+      </ol>
+      <div class="note">Builds are signed with a public dev key so they install over each other. Only install APKs from this page or the GitHub releases.</div>
+    </div>
+  </details></section>
+
+  <section id="nav"><details>
+    <summary><h2>Getting around</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <p>The bottom bar is <b>Library · Home · Playlists</b>. The strip above it is the mini player: it stays on every screen while you browse or search, swipe it to skip, tap it for the full player. The side menu (☰) holds Downloads, Podcasts &amp; audiobooks, Car mode, Voice, Receive a share, Settings and Report a bug. A badge appears in the top bar while downloads are running.</p>
+    </div>
+  </details></section>
+
+  <section id="play"><details>
+    <summary><h2>Playing</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><div class="grid">
       <div class="card"><b>Gestures on the artwork</b>Swipe left/right for next/previous. Tap to play or pause. Double-tap to favourite. Hold for the track menu. Swipe up for sing-along lyrics.</div>
       <div class="card"><b>Mini player</b>Swipe the strip left or right to skip. Tap to open the player.</div>
       <div class="card"><b>Scrubber</b>A plain bar or a live spectrograph drawn from the audio itself (no microphone). Choose in Settings → Scrubber. Tap or drag to seek.</div>
       <div class="card"><b>Crossfade</b>Settings → Crossfade: on by default, 1–20 s, equal-power / linear / smooth curve. Off means gapless.</div>
       <div class="card"><b>Tempo-match crossfade</b>Off by default, separate switch. Matches the incoming track's beat grid at 1:1, 2:1, 3:2, 4:3… whichever needs the least stretch, and glides both tracks to the new tempo. Falls back to the normal crossfade when tempos don't relate.</div>
       <div class="card"><b>Skip silence</b>Settings → Silence: cuts quiet stretches longer than a tolerance. Position stays accurate.</div>
-    </div>
-  </section>
+    </div></div>
+  </details></section>
 
-  <section id="library">
-    <h2>Library, genres, playlists</h2>
-    <ul>
+  <section id="library"><details>
+    <summary><h2>Library, genres, playlists</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><ul>
       <li><b>Library</b> has four views, and the search box narrows whichever one is open: <b>Artists</b> (with an A–Z rail) → an artist page with albums, singles &amp; EPs, loose tracks and "appears on" → a numbered album page; <b>Albums</b> as a grid; <b>Tracks</b>; <b>Genres</b>. Every track's menu has "Go to artist" and "Go to album". Grouping follows the album-artist tag, then the name before "feat.", so guest spots land on both artists' pages.</li>
       <li><b>Home</b> shows Trending, Newly downloaded, Unplayed, Forgotten, Favourites and Recommended. Every list is a rule over your own listening history, readable in the source. Any list can be saved as a playlist.</li>
-      <li><b>Genres</b> are read from each file's tag and tidied ("Hip-Hop", "hiphop" and "(7)" all become <code>hip hop</code>). Settings → Genres can re-read tags, tidy labels, or fill gaps from MusicBrainz (opt-in). Tracks you edit by hand are never re-labelled. The Library screen shows an <i>unlabelled</i> chip while anything is missing a genre.</li>
+      <li><b>Genres</b> are read from each file's tag and tidied ("Hip-Hop", "hiphop" and "(7)" all become <code>hip hop</code>). Settings → Genres can re-read tags, tidy labels, or fill gaps from MusicBrainz (opt-in). Tracks you edit by hand are never re-labelled. The Library shows an <i>unlabelled</i> chip while anything is missing a genre.</li>
       <li><b>Playlists</b> are hand-curated: create, reorder, rename, add from any track's menu.</li>
-    </ul>
-  </section>
+    </ul></div>
+  </details></section>
 
-  <section id="download">
-    <h2>Downloading</h2>
-    <p>Share a link to CUEd (or open it with CUEd) from Spotify, YouTube, Apple Music, Deezer, Tidal, SoundCloud, Bandcamp or Amazon Music, or type a search. It lands in the download box with what was detected: a track, an album or a playlist. Three backends, chosen under Downloads → Backend:</p>
-    <div class="grid">
-      <div class="card"><b>Built-in (default)</b>No Python, nothing to install. Spotify or YouTube links and searches are matched on YouTube Music and saved as <code>m4a</code> or <code>mp3</code> (your choice) with cover, tags and track numbers. Optional Spotify developer keys unlock full playlists and genres; without them a keyless fallback reads tracks and albums.</div>
-      <div class="card"><b>Termux on the phone</b>Runs <a href="https://github.com/spotDL/spotify-downloader">spotdl</a> inside Termux. Setup once: <code>pkg install python ffmpeg</code>, <code>pip install spotdl</code>, <code>termux-setup-storage</code>, and <code>allow-external-apps=true</code> in <code>~/.termux/termux.properties</code>; then grant CUEd the "Run commands in Termux" permission. If Termux upgrades its Python later and spotdl breaks with "libpython… not found", Downloads → <b>Repair spotdl</b> reinstalls it.</div>
-      <div class="card"><b>Companion on a laptop or Pi</b><code>pip install spotdl</code>, then <code>python3 tools/spotdl-server/server.py</code> (or <code>run.bat</code> / <code>run.sh</code>) on any machine on your Wi-Fi, and enter its address. Files are pulled over when done.</div>
+  <section id="download"><details>
+    <summary><h2>Downloading</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <p>Share a link to CUEd (or open it with CUEd) from Spotify, YouTube, Apple Music, Deezer, Tidal, SoundCloud, Bandcamp or Amazon Music, or type a search. It lands in the download box with what was detected: a track, an album or a playlist. Three backends, chosen under Downloads → Backend:</p>
+      <h3>Built-in (default)</h3>
+      <p>No Python, nothing to install. Spotify or YouTube links and searches are matched on YouTube Music and saved as <code>m4a</code> or <code>mp3</code> (your choice) with cover, tags and track numbers. Optional Spotify developer keys unlock full playlists and genres; without them a keyless fallback reads tracks and albums.</p>
+      <h3>Termux on the phone</h3>
+      <p>Runs <a href="https://github.com/spotDL/spotify-downloader">spotdl</a> inside Termux. Setup once, then grant CUEd the "Run commands in Termux" permission:</p>
+      <div class="code"><button class="copy" type="button">Copy</button><pre><code>pkg install python ffmpeg
+pip install spotdl
+termux-setup-storage
+echo "allow-external-apps=true" &gt;&gt; ~/.termux/termux.properties</code></pre></div>
+      <p>If Termux upgrades its Python later and spotdl breaks with "libpython… not found", Downloads → <b>Repair spotdl</b> reinstalls it.</p>
+      <h3>Companion on a laptop or Pi</h3>
+      <div class="code"><button class="copy" type="button">Copy</button><pre><code>pip install spotdl
+python3 tools/spotdl-server/server.py --port 8766</code></pre></div>
+      <p>Or double-click <code>run.bat</code> / <code>run.sh</code>. Pick <i>Companion (LAN)</i> in CUEd and enter <code>http://&lt;that-machine-ip&gt;:8766</code>. Files are pulled over when done.</p>
+      <h3>Links and lyrics</h3>
+      <p>Other platforms' tracks and albums are matched through song.link; Deezer playlists are expanded track by track. Apple Music, Tidal, SoundCloud and Amazon playlists can't be read without an account, so share those tracks one at a time. Two checkboxes control lyrics with downloads: save <code>.lrc</code> files beside tracks, and look lyrics up in CUEd afterwards.</p>
+      <div class="note">Each backend has a <b>Test</b> button on the Downloads page. If YouTube ever answers "Sign in to confirm you're not a bot", update CUEd first (its YouTube client follows the NewPipe project's), then try the other network (mobile data vs Wi-Fi).</div>
     </div>
-    <p>Other platforms' tracks and albums are matched through song.link; Deezer playlists are expanded track by track. Apple Music, Tidal, SoundCloud and Amazon playlists can't be read without an account, so share those tracks one at a time. Two checkboxes control lyrics with downloads: save <code>.lrc</code> files beside tracks, and look lyrics up in CUEd afterwards.</p>
-    <p>Each backend has a <b>Test</b> button on the Downloads page. If YouTube ever answers "Sign in to confirm you're not a bot", update CUEd first (its YouTube client follows the NewPipe project's), then try the other network (mobile data vs Wi-Fi).</p>
-  </section>
+  </details></section>
 
-  <section id="lyrics">
-    <h2>Lyrics</h2>
-    <p>Swipe up on the artwork (or tap the lyric line under the scrubber). Sources, in order: lyrics embedded in the file's tag (spotdl writes these), a <code>.lrc</code> or <code>.txt</code> beside the file, then <a href="https://lrclib.net">lrclib.net</a> if allowed in Settings → Lyrics. Synced lyrics scroll with the song; tap a line to jump there. Settings → Lyrics can fetch for the whole library.</p>
-  </section>
+  <section id="lyrics"><details>
+    <summary><h2>Lyrics</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><p>Swipe up on the artwork (or tap the lyric line under the scrubber). Sources, in order: lyrics embedded in the file's tag, a <code>.lrc</code> or <code>.txt</code> beside the file, then <a href="https://lrclib.net">lrclib.net</a> if allowed in Settings → Lyrics. Synced lyrics scroll with the song; tap a line to jump there. Settings → Lyrics can fetch for the whole library.</p></div>
+  </details></section>
 
-  <section id="share">
-    <h2>Sharing tracks and the app</h2>
-    <p>Track menu → Share. The phone shows a QR code and, if NFC is on, waits to be tapped by another phone on its Receive screen (sidebar → Receive a share). The code carries the track's source link, a local file URL served by the phone while the Share screen is open, and a link to install CUEd itself. Nothing goes through a server.</p>
-  </section>
+  <section id="share"><details>
+    <summary><h2>Sharing tracks and the app</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><p>Track menu → Share. The phone shows a QR code and, if NFC is on, waits to be tapped by another phone on its Receive screen (side menu → Receive a share). The code carries the track's source link, a local file URL served by the phone while the Share screen is open, and a link to install CUEd itself. Nothing goes through a server.</p></div>
+  </details></section>
 
-  <section id="car">
-    <h2>Car mode and voice</h2>
-    <p>Sidebar (☰) → <b>Car mode</b>: one screen of oversized controls, quick-play tiles and a big Voice button, with spoken replies. It can switch on by itself when Android reports a car dock. Android Auto shows CUEd as a media app with a browse tree (enable "Unknown sources" in the Android Auto app's developer settings, since CUEd isn't on the Play Store).</p>
-    <p>Voice works from the mic button, from Google Assistant ("play <i>forgotten tracks</i> on CUEd") and from Android Auto. Understanding is rule-based: "play something", "play my gym playlist", "play some house", "play songs by Daft Punk", "next", "shuffle off", "car mode", "what's playing".</p>
-  </section>
+  <section id="car"><details>
+    <summary><h2>Car mode and voice</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <p>Side menu (☰) → <b>Car mode</b>: one screen of oversized controls, quick-play tiles and a big Voice button, with spoken replies. It can switch on by itself when Android reports a car dock. Android Auto shows CUEd as a media app with a browse tree (enable "Unknown sources" in the Android Auto app's developer settings, since CUEd isn't on the Play Store).</p>
+      <p>Voice works from the mic button, from Google Assistant ("play <i>forgotten tracks</i> on CUEd") and from Android Auto. Understanding is rule-based: "play something", "play my gym playlist", "play some house", "play songs by Daft Punk", "next", "shuffle off", "car mode", "what's playing".</p>
+    </div>
+  </details></section>
 
-  <section id="widgets">
-    <h2>Widget and lock screen</h2>
-    <p>Long-press the home screen → Widgets → <b>CUEd</b>. Resize it: one row is a bar with play/pause and skip, two rows add the artist, three or more show the cover large. Tapping the cover opens Now Playing.</p>
-    <p>Settings → <b>Lock screen player</b> puts CUEd's own full-screen player above the keyguard while music plays: clock, cover, scrubber, big controls. Swipe down to hide, or tap "Unlock and open". Android 10+ needs "display over other apps" for this; Settings has the button, and CUEd uses that permission for nothing else.</p>
-  </section>
+  <section id="widgets"><details>
+    <summary><h2>Widget and lock screen</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <p>Long-press the home screen → Widgets → <b>CUEd</b>. Resize it: one row is a bar with play/pause and skip, two rows add the artist, three or more show the cover large. Tapping the cover opens Now Playing.</p>
+      <p>Settings → <b>Lock screen player</b> puts CUEd's own full-screen player above the keyguard while music plays: clock, cover, scrubber, big controls. Swipe down to hide, or tap "Unlock and open". Android 10+ needs "display over other apps" for this; Settings has the button, and CUEd uses that permission for nothing else.</p>
+    </div>
+  </details></section>
 
-  <section id="podcasts">
-    <h2>Podcasts and audiobooks</h2>
-    <p>Anything over 12 minutes is kept out of the music library and lives under Sidebar → Podcasts &amp; audiobooks. It resumes where you stopped, gets back-10 / forward-30 and speed controls, and is never crossfaded, recommended, or queued unless you pick it or put it in a playlist. Misfiled? "Move to Music" is in the track menu.</p>
-  </section>
+  <section id="podcasts"><details>
+    <summary><h2>Podcasts and audiobooks</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><p>Anything over 12 minutes is kept out of the music library and lives under side menu → Podcasts &amp; audiobooks. It resumes where you stopped, gets back-10 / forward-30 and speed controls, and is never crossfaded, recommended, or queued unless you pick it or put it in a playlist. Misfiled? "Move to Music" is in the track menu.</p></div>
+  </details></section>
 
-  <section id="nav">
-    <h2>Getting around</h2>
-    <p>The bottom bar is <b>Library · Home · Playlists</b>. The strip above it is the mini player: it stays on every screen while you browse or search, swipe it to skip, tap it for the full player. The side menu (☰) holds Downloads, Podcasts &amp; audiobooks, Car mode, Voice, Receive a share, Settings and Report a bug. A badge appears in the top bar while downloads are running.</p>
-  </section>
+  <section id="bugs"><details>
+    <summary><h2>Reporting a bug</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body">
+      <p>Settings → <b>Report a bug</b>, the <b>Report</b> button on a failed download, or the banner Home shows after a crash. You write a line or two; CUEd adds the app and Android version, which features are on, and (if you leave the box ticked) the recent debug log with tokens and keys redacted. "Show what gets sent" previews it.</p>
+      <p>It becomes a public issue on <a href="https://github.com/ShinobiHanzo/CUEd/issues">GitHub</a>: posted straight from the app if you've saved a GitHub token under Settings → Updates, otherwise the prefilled issue form opens in your browser and you submit it there. Turn on Settings → Debug log before reproducing a problem so the log has something in it.</p>
+    </div>
+  </details></section>
 
-  <section id="bugs">
-    <h2>Reporting a bug</h2>
-    <p>Settings → <b>Report a bug</b>, the <b>Report</b> button on a failed download, or the banner Home shows after a crash. You write a line or two; CUEd adds the app and Android version, which features are on, and (if you leave the box ticked) the recent debug log with tokens and keys redacted. "Show what gets sent" previews it. It becomes a public issue on <a href="https://github.com/ShinobiHanzo/CUEd/issues">GitHub</a>: posted straight from the app if you've saved a GitHub token under Settings → Updates, otherwise the prefilled issue form opens in your browser and you submit it there. Turn on Settings → Debug log before reproducing a problem so the log has something in it.</p>
-  </section>
-
-  <section id="privacy">
-    <h2>What leaves the phone</h2>
-    <table>
+  <section id="privacy"><details>
+    <summary><h2>What leaves the phone</h2><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="body"><table>
       <tr><th>Never</th><td>Listening history, library, playlists, recommendations. All local, no account, no telemetry.</td></tr>
       <tr><th>Your LAN only</th><td>The share server (while the Share screen is open) and the companion downloader.</td></tr>
       <tr><th>On request</th><td>Downloads: YouTube Music and Spotify's embed page or API (built-in backend), or spotdl's own traffic (Termux / companion); song.link and Deezer's API to resolve shared links. lrclib.net (lyrics, toggle). MusicBrainz (genres, opt-in). api.github.com for update checks (toggle) and for bug reports, only when you press the button.</td></tr>
-    </table>
-  </section>
+    </table></div>
+  </details></section>
 
-  <footer>CUEd is MIT-licensed. <a href="https://github.com/ShinobiHanzo/CUEd">Source, issues and releases on GitHub.</a></footer>
+  <footer>CUEd is MIT-licensed. <a href="https://github.com/ShinobiHanzo/CUEd">Source, issues and releases on GitHub.</a> This page is static: the only request it makes is to GitHub's releases API, to show the version above.</footer>
 </main>
 
+<button class="fab" id="top-btn" aria-label="Back to top"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0l-6 6m6-6l6 6"/></svg></button>
+
 <script>
-  // Progressive: show the current version if the Releases API is reachable (public repo).
-  fetch('https://api.github.com/repos/ShinobiHanzo/CUEd/releases?per_page=5', {headers:{Accept:'application/vnd.github+json'}})
+(function () {
+  const $ = (s, el) => (el || document).querySelector(s), $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+  const desktop = matchMedia('(min-width: 860px)');
+
+  // Sections: open on desktop, accordions on phones; always open the one a link targets.
+  const syncDetails = () => $$('section > details').forEach(d => { if (desktop.matches) d.open = true; });
+  syncDetails(); desktop.addEventListener('change', syncDetails);
+  const openTarget = () => { const id = location.hash.slice(1); if (!id) return; const sec = document.getElementById(id); const d = sec && (sec.tagName === 'DETAILS' ? sec : sec.querySelector('details')); if (d) d.open = true; };
+  openTarget(); addEventListener('hashchange', openTarget);
+
+  // Mobile sheet.
+  const body = document.body, menu = $('#menu');
+  const setNav = on => { body.classList.toggle('nav-open', on); menu.setAttribute('aria-expanded', String(on)); };
+  menu.addEventListener('click', () => setNav(!body.classList.contains('nav-open')));
+  $('#scrim').addEventListener('click', () => setNav(false));
+  $$('.sheet a').forEach(a => a.addEventListener('click', () => setNav(false)));
+  addEventListener('keydown', e => { if (e.key === 'Escape') setNav(false); });
+
+  // Scroll-spy for both navs.
+  const links = $$('.links a, .sheet a').filter(a => a.getAttribute('href').startsWith('#'));
+  const byId = {}; links.forEach(a => (byId[a.getAttribute('href').slice(1)] = byId[a.getAttribute('href').slice(1)] || []).push(a));
+  const spy = new IntersectionObserver(es => {
+    es.forEach(e => { if (!e.isIntersecting) return; links.forEach(a => a.classList.remove('on')); (byId[e.target.id] || []).forEach(a => a.classList.add('on')); });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  $$('section[id], #get').forEach(s => spy.observe(s));
+
+  // Copy buttons.
+  $$('.copy').forEach(b => b.addEventListener('click', async () => {
+    const text = b.parentElement.querySelector('code').innerText;
+    try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; b.classList.add('ok'); } catch { b.textContent = 'Select & copy'; }
+    setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('ok'); }, 1600);
+  }));
+
+  // Back to top.
+  const fab = $('#top-btn');
+  addEventListener('scroll', () => fab.classList.toggle('show', scrollY > 600), { passive: true });
+  fab.addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+
+  // Releases: version line + "What's new". One request, fails quietly offline.
+  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  fetch('https://api.github.com/repos/ShinobiHanzo/CUEd/releases?per_page=4', { headers: { Accept: 'application/vnd.github+json' } })
     .then(r => r.ok ? r.json() : null)
     .then(list => {
-      if (!list) return;
-      const rel = list.find(r => !r.draft && r.assets && r.assets.some(a => a.name.endsWith('.apk')));
-      if (!rel) return;
-      const apk = rel.assets.find(a => a.name === 'CUEd-' + rel.tag_name + '.apk') || rel.assets.find(a => a.name.endsWith('.apk'));
-      const mb = apk ? (apk.size / 1048576).toFixed(1) + ' MB' : '';
-      document.getElementById('ver').textContent = 'Latest: ' + rel.tag_name + (mb ? ' · ' + mb : '') + ' · ' + new Date(rel.published_at).toLocaleDateString() + ' · Android 8.0 or newer.';
-    }).catch(() => {});
+      const box = $('#releases');
+      if (!list || !list.length) { box.innerHTML = '<p style="color:var(--muted)">Release notes live on <a href="https://github.com/ShinobiHanzo/CUEd/releases">GitHub</a>.</p>'; return; }
+      const rels = list.filter(r => !r.draft && r.assets && r.assets.some(a => a.name.endsWith('.apk')));
+      const latest = rels[0];
+      if (latest) {
+        const apk = latest.assets.find(a => a.name === 'CUEd-' + latest.tag_name + '.apk') || latest.assets.find(a => a.name.endsWith('.apk'));
+        const mb = apk ? (apk.size / 1048576).toFixed(1) + ' MB' : '';
+        $('#ver').innerHTML = '<span class="pill">' + esc(latest.tag_name) + '</span> ' + (mb ? mb + ' · ' : '') + new Date(latest.published_at).toLocaleDateString() + ' · Android 8.0 or newer';
+      }
+      box.innerHTML = rels.slice(0, 3).map(r => {
+        const notes = (r.body || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/\*\*/g, '').trim();
+        return '<div class="rel"><div class="h"><b>' + esc(r.name || r.tag_name) + '</b><span>' + new Date(r.published_at).toLocaleDateString() + '</span><a href="' + r.html_url + '" style="margin-left:auto;font-size:13px">Details ↗</a></div>' +
+          (notes ? '<pre>' + esc(notes.length > 900 ? notes.slice(0, 900) + '…' : notes) + '</pre>' : '') + '</div>';
+      }).join('');
+    }).catch(() => { $('#releases').innerHTML = '<p style="color:var(--muted)">Release notes live on <a href="https://github.com/ShinobiHanzo/CUEd/releases">GitHub</a>.</p>'; });
+})();
 </script>
 </body>
 </html>
