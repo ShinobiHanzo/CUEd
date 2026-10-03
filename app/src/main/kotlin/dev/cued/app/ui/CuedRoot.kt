@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Menu
@@ -90,12 +93,19 @@ sealed class Inbound {
     data class VoicePlay(val query: String) : Inbound()
 }
 
+/** Bottom bar: three destinations, Home in the middle. Downloads and Settings live in the side menu. */
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
-    HOME("home", "Home", Icons.Default.Home),
     LIBRARY("library", "Library", Icons.Default.LibraryMusic),
+    HOME("home", "Home", Icons.Default.Home),
     PLAYLISTS("playlists", "Playlists", Icons.AutoMirrored.Filled.QueueMusic),
-    DOWNLOADS("downloads", "Downloads", Icons.Default.Download),
-    SETTINGS("settings", "Settings", Icons.Default.Settings),
+}
+
+private object Route {
+    const val DOWNLOADS = "downloads"
+    const val SETTINGS = "settings"
+    const val NOW_PLAYING = "nowplaying"
+    /** Routes that use the root top bar (everything else draws its own with a back arrow). */
+    val topBarTitles = mapOf("home" to "CUEd", "library" to "Library", "playlists" to "Playlists", DOWNLOADS to "Downloads", SETTINGS to "Settings")
 }
 
 @OptIn(UnstableApi::class, ExperimentalMaterial3Api::class)
@@ -141,8 +151,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     LaunchedEffect(incoming) {
         when (val i = incoming) {
             is Inbound.Share -> { snackbar.showSnackbar(svm.receive(i.payload)) }
-            is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Tab.DOWNLOADS.route) { launchSingleTop = true } }
-            Inbound.NowPlaying -> nav.navigate("nowplaying") { launchSingleTop = true }
+            is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }
+            Inbound.NowPlaying -> nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true }
             is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
             null -> {}
         }
@@ -151,7 +161,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
 
     val play: (List<TrackEntity>, Int) -> Unit = { list, idx -> pvm.play(list, idx) }
     val more: (TrackEntity) -> Unit = { sheetTrack = it }
-    val showTabs = Tab.entries.any { it.route == route }
+    // The mini player and the bottom bar stay on every screen except the full player itself,
+    // so the current track is always one tap away while browsing an artist or searching.
+    val showChrome = route != Route.NOW_PLAYING
+    val rootTitle = Route.topBarTitles[route]
+    val activeDownloads by dvm.activeCount.collectAsState()
+    androidx.compose.runtime.DisposableEffect(Unit) { pvm.uiVisible.value = true; onDispose { pvm.uiVisible.value = false } }
 
     if (carMode) {
         CarModeScreen(
@@ -180,6 +195,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 NavigationDrawerItem(label = { Text("Voice command") }, selected = false, icon = { Icon(Icons.Default.Mic, null) },
                     onClick = { scope.launch { drawer.close() }; voice.listen() })
+                NavigationDrawerItem(label = { Text("Downloads") }, selected = route == Route.DOWNLOADS, icon = { Icon(Icons.Default.Download, null) },
+                    badge = { if (activeDownloads > 0) Text("$activeDownloads active") },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Podcasts & audiobooks") }, selected = route == "longplays", icon = { Icon(Icons.Default.Podcasts, null) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("longplays") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
@@ -188,34 +206,45 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     onClick = { scope.launch { drawer.close() }; lvm.rescan() })
                 NavigationDrawerItem(label = { Text("Analyse all tracks") }, selected = false, icon = { Icon(Icons.Default.GraphicEq, null) },
                     onClick = { scope.launch { drawer.close() }; lvm.analyseAll() })
-                NavigationDrawerItem(label = { Text("Settings") }, selected = route == Tab.SETTINGS.route, icon = { Icon(Icons.Default.Settings, null) },
-                    onClick = { scope.launch { drawer.close() }; nav.navigate(Tab.SETTINGS.route) { launchSingleTop = true } })
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(label = { Text("Settings") }, selected = route == Route.SETTINGS, icon = { Icon(Icons.Default.Settings, null) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate(Route.SETTINGS) { launchSingleTop = true } })
+                NavigationDrawerItem(label = { Text("Report a bug") }, selected = false, icon = { Icon(Icons.Default.BugReport, null) },
+                    onClick = { scope.launch { drawer.close() }; graph.bugs.open() })
                 Text(
                     "Voice: \"play some house\", \"play my gym playlist\", \"next\", \"car mode\". Also works from Google Assistant and Android Auto: \"play <x> on CUEd\".",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp),
                 )
             }
         },
-        gesturesEnabled = showTabs,
+        gesturesEnabled = showChrome,
     ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            if (showTabs) TopAppBar(
-                title = { Text(Tab.entries.first { it.route == route }.label) },
-                navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Menu") } },
-                actions = { IconButton(onClick = { voice.listen() }) { Icon(Icons.Default.Mic, contentDescription = "Voice command") } },
+            if (rootTitle != null) TopAppBar(
+                title = { Text(rootTitle) },
+                navigationIcon = {
+                    if (route == Route.DOWNLOADS || route == Route.SETTINGS) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    else IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Menu") }
+                },
+                actions = {
+                    if (activeDownloads > 0 && route != Route.DOWNLOADS) IconButton(onClick = { nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }) {
+                        androidx.compose.material3.BadgedBox(badge = { androidx.compose.material3.Badge { Text("$activeDownloads") } }) { Icon(Icons.Default.Download, contentDescription = "Downloads") }
+                    }
+                    IconButton(onClick = { voice.listen() }) { Icon(Icons.Default.Mic, contentDescription = "Voice command") }
+                },
             )
         },
         bottomBar = {
-            if (showTabs) Column {
-                MiniPlayer(player, currentTrack, onOpen = { nav.navigate("nowplaying") }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onPrevious = { pvm.previous() })
+            if (showChrome) Column {
+                MiniPlayer(player, currentTrack, onOpen = { nav.navigate(Route.NOW_PLAYING) }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onPrevious = { pvm.previous() })
                 NavigationBar {
                     Tab.entries.forEach { t ->
                         NavigationBarItem(
                             selected = route == t.route,
                             onClick = { nav.navigate(t.route) { popUpTo(Tab.HOME.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
-                            icon = { Icon(t.icon, contentDescription = t.label) }, label = { Text(t.label) },
+                            icon = { Icon(t.icon, contentDescription = t.label, modifier = if (t == Tab.HOME) Modifier.size(28.dp) else Modifier) }, label = { Text(t.label) },
                         )
                     }
                 }
@@ -229,7 +258,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     HomeScreen(
                         lvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
                         updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version,
-                        onUpdate = { nav.navigate(Tab.SETTINGS.route) { launchSingleTop = true } },
+                        onUpdate = { nav.navigate(Route.SETTINGS) { launchSingleTop = true } },
                         crashed = crash != null,
                         onReportCrash = {
                             val c = crash ?: return@HomeScreen
@@ -264,12 +293,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     )
                 }
                 composable(Tab.PLAYLISTS.route) { PlaylistsScreen(lvm, onOpen = { nav.navigate("playlist/$it") }) }
-                composable(Tab.DOWNLOADS.route) {
+                composable(Route.DOWNLOADS) {
                     DownloadsScreen(dvm, initialSource = pendingDownload, onSourceConsumed = { pendingDownload = null })
                 }
-                composable(Tab.SETTINGS.route) { SettingsScreen(setvm, onOpenReceive = { nav.navigate("receive") }) }
+                composable(Route.SETTINGS) { SettingsScreen(setvm, onOpenReceive = { nav.navigate("receive") }) }
 
-                composable("nowplaying") { NowPlayingScreen(pvm, lvm, onClose = { nav.popBackStack() }, onMore = { id -> scope.launch { graph.library.track(id)?.let { sheetTrack = it } } }) }
+                composable(Route.NOW_PLAYING) { NowPlayingScreen(pvm, lvm, onClose = { nav.popBackStack() }, onMore = { id -> scope.launch { graph.library.track(id)?.let { sheetTrack = it } } }) }
                 composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     PlaylistDetailScreen(lvm, e.arguments!!.getLong("id"), player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more)
                 }

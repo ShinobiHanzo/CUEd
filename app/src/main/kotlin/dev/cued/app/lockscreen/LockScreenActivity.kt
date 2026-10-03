@@ -118,6 +118,7 @@ class LockScreenActivity : ComponentActivity() {
             CuedTheme {
                 CompositionLocalProvider(LocalGraph provides graph) {
                     val vm: PlayerViewModel = viewModel(factory = CuedVmFactory(graph))
+                    androidx.compose.runtime.DisposableEffect(Unit) { vm.uiVisible.value = true; onDispose { vm.uiVisible.value = false } }
                     LockScreenPlayer(vm, onDismiss = { finishQuietly() }, onUnlock = { unlockAndOpen() })
                 }
             }
@@ -179,7 +180,7 @@ private fun LockScreenPlayer(vm: PlayerViewModel, onDismiss: () -> Unit, onUnloc
             Text(clock.first, fontSize = 64.sp, fontWeight = FontWeight.Light, color = Mist)
             Text(clock.second, style = MaterialTheme.typography.bodyLarge, color = Muted)
             Spacer(Modifier.weight(1f))
-            AlbumArt(track, Modifier.size(220.dp), corner = 18)
+            AlbumArt(track, Modifier.size(220.dp), corner = 18, px = dev.cued.app.ui.components.Artwork.LARGE)
             Spacer(Modifier.height(22.dp))
             Text(st.title.ifBlank { "Nothing playing" }, style = MaterialTheme.typography.titleLarge, color = Mist, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             Text(st.artist, style = MaterialTheme.typography.bodyLarge, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)

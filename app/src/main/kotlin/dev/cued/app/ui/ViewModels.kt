@@ -87,6 +87,8 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     val genres: StateFlow<List<String>> = lib.genres.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     /** Artists → albums → tracks, rebuilt whenever the library changes. */
     val discography: StateFlow<Discography.Index<TrackEntity>> = lib.tracks
+        // Play counts and favourites change the rows constantly; only rebuild when something the shelf shows changes.
+        .distinctUntilChanged { a, b -> a.size == b.size && a.indices.all { i -> val x = a[i]; val y = b[i]; x.id == y.id && x.title == y.title && x.artist == y.artist && x.albumArtist == y.albumArtist && x.album == y.album && x.albumId == y.albumId && x.trackNo == y.trackNo && x.discNo == y.discNo && x.year == y.year && x.durationMs == y.durationMs && x.uri == y.uri } }
         .map { ts -> Discography.build(ts) { t -> Discography.Fields(t.title, t.artist, t.albumArtist, t.album, t.trackNo, t.discNo, t.year, t.durationMs) } }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discography.Index.empty())
@@ -154,6 +156,8 @@ data class PlayerUiState(
 @UnstableApi
 class PlayerViewModel(private val graph: Graph) : ViewModel() {
     val connection = PlayerConnection(graph.app)
+    /** Set by the hosting screen while it is started; gates the 10 Hz position poll. */
+    val uiVisible = MutableStateFlow(false)
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state
     val transition: StateFlow<TransitionInfo?> = graph.player.player.transitionInfo
@@ -172,8 +176,10 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
         viewModelScope.launch {
             connection.controller.collect { c -> c?.addListener(listener); c?.let { refresh(it) } }
         }
+        // Position ticks only while some UI is on screen; the service keeps playing regardless.
         viewModelScope.launch {
             while (isActive) {
+                if (!uiVisible.value) uiVisible.first { it }
                 connection.player?.let { p -> if (p.isPlaying) _state.value = _state.value.copy(positionMs = p.currentPosition.coerceAtLeast(0L)) }
                 delay(100)
             }
@@ -284,6 +290,9 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
 
 class DownloadViewModel(private val graph: Graph) : ViewModel() {
     val jobs: StateFlow<List<DownloadJobEntity>> = graph.downloads.jobs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Queued + running jobs, for the badge in the drawer and top bar. */
+    val activeCount: StateFlow<Int> = graph.downloads.jobs.map { js -> js.count { it.status == dev.cued.app.download.DownloadManager.STATUS_QUEUED || it.status == dev.cued.app.download.DownloadManager.STATUS_RUNNING } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val settings: StateFlow<DownloadSettings> = graph.settings.download.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadSettings(DownloadBackend.BUILT_IN, "", "mp3", false, true, null, null))
     fun setSpotifyKeys(id: String, secret: String) = viewModelScope.launch { graph.settings.setSpotifyKeys(id, secret) }
     val termux = TermuxDownloader(graph.app)

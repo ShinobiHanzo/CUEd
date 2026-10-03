@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.room.withTransaction
 import dev.cued.app.data.db.CuedDatabase
 import dev.cued.app.data.db.PlayEventEntity
 import dev.cued.app.data.db.PlaylistEntity
@@ -205,6 +206,8 @@ class LibraryRepository(
             if (hasAlbumArtist) projection += ALBUM_ARTIST_COLUMN
             val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 15000"
             val existing = db.tracks().allIncludingMissing().associateBy { it.mediaStoreId }
+            // One transaction for the whole pass: a first scan or a schema upgrade touches every row.
+            db.withTransaction {
             context.contentResolver.query(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection.toTypedArray(), selection, null, null,
             )?.use { c ->
@@ -257,6 +260,7 @@ class LibraryRepository(
                 }
             }
             for (t in existing.values) if (t.mediaStoreId !in seen && !t.missing) db.tracks().setMissing(t.id, true)
+            } // transaction
         } finally {
             _scanning.value = false
         }

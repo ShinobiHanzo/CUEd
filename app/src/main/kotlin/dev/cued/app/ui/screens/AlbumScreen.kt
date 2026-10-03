@@ -80,7 +80,7 @@ fun AlbumScreen(
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    AlbumArt(tracks.firstOrNull(), Modifier.size(220.dp), corner = 16)
+                    AlbumArt(tracks.firstOrNull(), Modifier.size(220.dp), corner = 16, px = dev.cued.app.ui.components.Artwork.LARGE)
                     Spacer(Modifier.height(12.dp))
                     Text(a.name, style = MaterialTheme.typography.headlineSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     Text(a.artist, style = MaterialTheme.typography.bodyLarge, color = Teal, modifier = Modifier.clickable { onOpenArtist(a.artist) }.padding(4.dp))

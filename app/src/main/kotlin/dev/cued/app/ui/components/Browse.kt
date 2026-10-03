@@ -75,7 +75,7 @@ fun AlbumCard(album: Discography.Album<TrackEntity>, modifier: Modifier = Modifi
 @Composable
 fun ArtistRow(artist: Discography.Artist<TrackEntity>, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        AlbumArt(artist.coverTrack, Modifier.size(48.dp), corner = 24)
+        AlbumArt(artist.coverTrack, Modifier.size(48.dp), corner = 24, px = Artwork.SMALL)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(artist.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -71,9 +71,12 @@ APK and publishes it on the Releases page. `.github/workflows/pages.yml` publish
 
 ## Status
 
-First cut. The core library is unit-tested; the Android module is built in CI but has not
-yet been run on a device. Expect rough edges around Termux permissions and NFC on
-specific OEM firmware. Issues and PRs welcome; keep it offline-first.
+Daily-driver stage. The core library is unit-tested; the Android module is built and
+released from CI and runs on real devices (Android 16 tested). Still unverified in the
+wild: the built-in downloader after the NewPipeExtractor 0.26 bump, the lock-screen
+player on every OEM, and NFC on specific firmware. Report problems from inside the app
+(Settings → Report a bug) so the debug log comes along. Issues and PRs welcome; keep
+it offline-first.
 
 ## License
 

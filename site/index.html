@@ -49,6 +49,7 @@
   <a class="l" href="#share">Sharing</a>
   <a class="l" href="#car">Car &amp; voice</a>
   <a class="l" href="#widgets">Widgets</a>
+  <a class="l" href="#bugs">Bugs</a>
   <a class="l" href="#podcasts">Podcasts</a>
   <a class="l" href="#privacy">Privacy</a>
   <a class="l" href="https://github.com/ShinobiHanzo/CUEd">Source</a>
@@ -93,6 +94,7 @@
   <section id="library">
     <h2>Library, genres, playlists</h2>
     <ul>
+      <li><b>Library</b> has four views, and the search box narrows whichever one is open: <b>Artists</b> (with an A–Z rail) → an artist page with albums, singles &amp; EPs, loose tracks and "appears on" → a numbered album page; <b>Albums</b> as a grid; <b>Tracks</b>; <b>Genres</b>. Every track's menu has "Go to artist" and "Go to album". Grouping follows the album-artist tag, then the name before "feat.", so guest spots land on both artists' pages.</li>
       <li><b>Home</b> shows Trending, Newly downloaded, Unplayed, Forgotten, Favourites and Recommended. Every list is a rule over your own listening history, readable in the source. Any list can be saved as a playlist.</li>
       <li><b>Genres</b> are read from each file's tag and tidied ("Hip-Hop", "hiphop" and "(7)" all become <code>hip hop</code>). Settings → Genres can re-read tags, tidy labels, or fill gaps from MusicBrainz (opt-in). Tracks you edit by hand are never re-labelled. The Library screen shows an <i>unlabelled</i> chip while anything is missing a genre.</li>
       <li><b>Playlists</b> are hand-curated: create, reorder, rename, add from any track's menu.</li>
@@ -100,21 +102,15 @@
   </section>
 
   <section id="download">
-    <h2>Downloading with spotdl</h2>
-    <p>CUEd doesn't download from streaming services itself; it drives <a href="https://github.com/spotDL/spotify-downloader">spotdl</a>, either on the phone in Termux or on a computer on your Wi-Fi.</p>
-    <h3>Option A: Termux on the phone</h3>
-    <pre>pkg install python ffmpeg
-pip install spotdl
-termux-setup-storage
-echo "allow-external-apps=true" &gt;&gt; ~/.termux/termux.properties</pre>
-    <p>Then grant CUEd the "Run commands in Termux" permission and pick <i>Termux</i> under Downloads → Backend.</p>
-    <h3>Option B: companion server on a laptop or Pi</h3>
-    <pre>pip install spotdl
-python3 tools/spotdl-server/server.py --port 8766</pre>
-    <p>Pick <i>Companion (LAN)</i> and enter <code>http://&lt;that-machine-ip&gt;:8766</code>. Files are pulled over to the phone when done.</p>
-    <h3>Sharing links</h3>
-    <p>Share a link to CUEd from Spotify, YouTube, Apple Music, Deezer, Tidal, SoundCloud, Bandcamp or Amazon Music, or open the link with CUEd. It lands in the download box with what was detected. Spotify and YouTube go straight to spotdl; other platforms' tracks and albums are matched via song.link; Deezer playlists are expanded track by track. Apple Music, Tidal, SoundCloud and Amazon playlists can't be read without an account, so share those tracks one by one.</p>
-    <p>Two checkboxes control lyrics with downloads: save <code>.lrc</code> files beside tracks, and look lyrics up in CUEd afterwards.</p>
+    <h2>Downloading</h2>
+    <p>Share a link to CUEd (or open it with CUEd) from Spotify, YouTube, Apple Music, Deezer, Tidal, SoundCloud, Bandcamp or Amazon Music, or type a search. It lands in the download box with what was detected: a track, an album or a playlist. Three backends, chosen under Downloads → Backend:</p>
+    <div class="grid">
+      <div class="card"><b>Built-in (default)</b>No Python, nothing to install. Spotify or YouTube links and searches are matched on YouTube Music and saved as <code>m4a</code> or <code>mp3</code> (your choice) with cover, tags and track numbers. Optional Spotify developer keys unlock full playlists and genres; without them a keyless fallback reads tracks and albums.</div>
+      <div class="card"><b>Termux on the phone</b>Runs <a href="https://github.com/spotDL/spotify-downloader">spotdl</a> inside Termux. Setup once: <code>pkg install python ffmpeg</code>, <code>pip install spotdl</code>, <code>termux-setup-storage</code>, and <code>allow-external-apps=true</code> in <code>~/.termux/termux.properties</code>; then grant CUEd the "Run commands in Termux" permission. If Termux upgrades its Python later and spotdl breaks with "libpython… not found", Downloads → <b>Repair spotdl</b> reinstalls it.</div>
+      <div class="card"><b>Companion on a laptop or Pi</b><code>pip install spotdl</code>, then <code>python3 tools/spotdl-server/server.py</code> (or <code>run.bat</code> / <code>run.sh</code>) on any machine on your Wi-Fi, and enter its address. Files are pulled over when done.</div>
+    </div>
+    <p>Other platforms' tracks and albums are matched through song.link; Deezer playlists are expanded track by track. Apple Music, Tidal, SoundCloud and Amazon playlists can't be read without an account, so share those tracks one at a time. Two checkboxes control lyrics with downloads: save <code>.lrc</code> files beside tracks, and look lyrics up in CUEd afterwards.</p>
+    <p>Each backend has a <b>Test</b> button on the Downloads page. If YouTube ever answers "Sign in to confirm you're not a bot", update CUEd first (its YouTube client follows the NewPipe project's), then try the other network (mobile data vs Wi-Fi).</p>
   </section>
 
   <section id="lyrics">
@@ -144,12 +140,22 @@ python3 tools/spotdl-server/server.py --port 8766</pre>
     <p>Anything over 12 minutes is kept out of the music library and lives under Sidebar → Podcasts &amp; audiobooks. It resumes where you stopped, gets back-10 / forward-30 and speed controls, and is never crossfaded, recommended, or queued unless you pick it or put it in a playlist. Misfiled? "Move to Music" is in the track menu.</p>
   </section>
 
+  <section id="nav">
+    <h2>Getting around</h2>
+    <p>The bottom bar is <b>Library · Home · Playlists</b>. The strip above it is the mini player: it stays on every screen while you browse or search, swipe it to skip, tap it for the full player. The side menu (☰) holds Downloads, Podcasts &amp; audiobooks, Car mode, Voice, Receive a share, Settings and Report a bug. A badge appears in the top bar while downloads are running.</p>
+  </section>
+
+  <section id="bugs">
+    <h2>Reporting a bug</h2>
+    <p>Settings → <b>Report a bug</b>, the <b>Report</b> button on a failed download, or the banner Home shows after a crash. You write a line or two; CUEd adds the app and Android version, which features are on, and (if you leave the box ticked) the recent debug log with tokens and keys redacted. "Show what gets sent" previews it. It becomes a public issue on <a href="https://github.com/ShinobiHanzo/CUEd/issues">GitHub</a>: posted straight from the app if you've saved a GitHub token under Settings → Updates, otherwise the prefilled issue form opens in your browser and you submit it there. Turn on Settings → Debug log before reproducing a problem so the log has something in it.</p>
+  </section>
+
   <section id="privacy">
     <h2>What leaves the phone</h2>
     <table>
       <tr><th>Never</th><td>Listening history, library, playlists, recommendations. All local, no account, no telemetry.</td></tr>
       <tr><th>Your LAN only</th><td>The share server (while the Share screen is open) and the companion downloader.</td></tr>
-      <tr><th>On request</th><td>spotdl (whatever it needs to download), song.link and Deezer's API (to resolve shared links), lrclib.net (lyrics, toggle), MusicBrainz (genres, opt-in), api.github.com (updates, toggle).</td></tr>
+      <tr><th>On request</th><td>Downloads: YouTube Music and Spotify's embed page or API (built-in backend), or spotdl's own traffic (Termux / companion); song.link and Deezer's API to resolve shared links. lrclib.net (lyrics, toggle). MusicBrainz (genres, opt-in). api.github.com for update checks (toggle) and for bug reports, only when you press the button.</td></tr>
     </table>
   </section>
 

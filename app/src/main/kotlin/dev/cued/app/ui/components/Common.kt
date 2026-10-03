@@ -54,11 +54,11 @@ fun formatMs(ms: Long): String {
 }
 
 @Composable
-fun AlbumArt(albumId: Long?, modifier: Modifier = Modifier, corner: Int = 8, trackUri: String? = null) {
+fun AlbumArt(albumId: Long?, modifier: Modifier = Modifier, corner: Int = 8, trackUri: String? = null, px: Int = Artwork.MEDIUM) {
     val context = LocalContext.current
     var storeFailed by remember(albumId) { mutableStateOf(albumId == null) }
     val embedded by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = trackUri, key2 = storeFailed) {
-        value = if (storeFailed && trackUri != null) Artwork.embedded(context, trackUri) else null
+        value = if (storeFailed && trackUri != null) Artwork.embedded(context, trackUri, px) else null
     }
     Box(modifier.clip(RoundedCornerShape(corner.dp)).background(Ink3), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.MusicNote, contentDescription = null, tint = Muted)
@@ -72,8 +72,8 @@ fun AlbumArt(albumId: Long?, modifier: Modifier = Modifier, corner: Int = 8, tra
 
 /** Convenience overload: album art from MediaStore with an embedded-picture fallback. */
 @Composable
-fun AlbumArt(track: dev.cued.app.data.db.TrackEntity?, modifier: Modifier = Modifier, corner: Int = 8) =
-    AlbumArt(track?.albumId, modifier, corner, track?.uri)
+fun AlbumArt(track: dev.cued.app.data.db.TrackEntity?, modifier: Modifier = Modifier, corner: Int = 8, px: Int = Artwork.MEDIUM) =
+    AlbumArt(track?.albumId, modifier, corner, track?.uri, px)
 
 @Composable
 fun TrackRow(
@@ -88,7 +88,7 @@ fun TrackRow(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AlbumArt(track, Modifier.size(48.dp))
+        AlbumArt(track, Modifier.size(48.dp), px = Artwork.SMALL)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

@@ -56,7 +56,7 @@ fun MiniPlayer(state: PlayerUiState, track: dev.cued.app.data.db.TrackEntity?, o
             modifier = Modifier.fillMaxWidth().height(2.dp), color = Teal, trackColor = Ink2,
         )
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AlbumArt(track, Modifier.size(40.dp))
+            AlbumArt(track, Modifier.size(40.dp), px = dev.cued.app.ui.components.Artwork.SMALL)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(state.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)

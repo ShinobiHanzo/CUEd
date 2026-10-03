@@ -17,11 +17,20 @@ import kotlinx.coroutines.withContext
  * system thumbnailer on Android 10+ and the embedded picture otherwise.
  */
 object Artwork {
-    private val cache = LruCache<String, Bitmap>(64)
+    /** Bounded by bytes, not count: an eighth of the heap, capped at 24 MB. 64 full-size covers used to be able to take 64 MB. */
+    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(24L * 1024 * 1024).toInt()) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
     private val misses = java.util.Collections.synchronizedSet(HashSet<String>())
 
-    suspend fun embedded(context: Context, trackUri: String, px: Int = 512): Bitmap? = withContext(Dispatchers.IO) {
-        cache.get(trackUri)?.let { return@withContext it }
+    const val SMALL = 128
+    const val MEDIUM = 256
+    const val LARGE = 512
+
+    /** [px] is the longest side wanted: rows ask for [SMALL], cards for [MEDIUM], the player for [LARGE]. */
+    suspend fun embedded(context: Context, trackUri: String, px: Int = MEDIUM): Bitmap? = withContext(Dispatchers.IO) {
+        val key = "$trackUri@$px"
+        cache.get(key)?.let { return@withContext it }
         if (trackUri in misses) return@withContext null
         val uri = Uri.parse(trackUri)
         val bmp = runCatching {
@@ -31,9 +40,9 @@ object Artwork {
                 try { mmr.setDataSource(context, uri); mmr.embeddedPicture?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } } finally { runCatching { mmr.release() } }
             }
         }.getOrNull()
-        if (bmp != null) cache.put(trackUri, bmp) else misses += trackUri
+        if (bmp != null) cache.put(key, bmp) else misses += trackUri
         bmp
     }
 
-    fun forget(trackUri: String) { cache.remove(trackUri); misses.remove(trackUri) }
+    fun forget(trackUri: String) { for (px in listOf(SMALL, MEDIUM, LARGE)) cache.remove("$trackUri@$px"); misses.remove(trackUri) }
 }
