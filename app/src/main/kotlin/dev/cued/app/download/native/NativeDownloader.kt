@@ -91,7 +91,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         if (meta?.coverUrl == null) info.thumbnails.maxByOrNull { it.width }?.url?.let(onArtwork)
         var ext = youtube.extensionOf(stream)
         val videoId = SourceLinks.parse(ytUrl)?.id ?: ytUrl.substringAfter("v=").substringBefore('&')
-        // No Spotify metadata (a YouTube link or a search): clean the video title and ask MusicBrainz for the rest.
+        // Sources, in order of trust: Spotify (title, artists, cover; album only with API keys),
+        // then MusicBrainz for whatever is still blank (album, album artist, year, track number, cover).
         var title: String; var artists: List<String>; var album = meta?.album; var albumArtist = meta?.albumArtist
         var trackNumber = meta?.trackNumber; var year = meta?.year
         val coverUrls = ArrayList<String>()
@@ -102,14 +103,17 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             val uploaderArtist = dev.cued.core.download.TitleClean.artistFromUploader(info.uploaderName)
             title = split.title
             artists = listOf(split.artist ?: uploaderArtist ?: "Unknown artist")
-            if (enrichOnline) runCatching { musicBrainz.lookup(artists.first(), title) }
-                .onFailure { DebugLog.w(TAG, "MusicBrainz lookup failed", it) }.getOrNull()?.let { r ->
-                    DebugLog.d(TAG, "MusicBrainz: ${r.artist} - ${r.title} on \"${r.album}\" (${r.year}, #${r.trackNo}, score ${r.score})")
-                    title = r.title; artists = listOf(r.artist); album = r.album; albumArtist = r.albumArtist
-                    if (r.year > 0) year = r.year.toString(); if (r.trackNo > 0) trackNumber = r.trackNo
-                    coverUrls += r.coverUrls
-                }
         }
+        val missing = album.isNullOrBlank() || year.isNullOrBlank() || (trackNumber ?: 0) == 0
+        if (enrichOnline && missing) runCatching { musicBrainz.lookup(artists.first(), title) }
+            .onFailure { DebugLog.w(TAG, "MusicBrainz lookup failed", it) }.getOrNull()?.let { r ->
+                DebugLog.d(TAG, "MusicBrainz: ${r.artist} - ${r.title} on \"${r.album}\" (${r.year}, #${r.trackNo}, score ${r.score})")
+                if (meta == null) { title = r.title; artists = listOf(r.artist) } // only rename when nothing better was known
+                if (album.isNullOrBlank()) { album = r.album; if (albumArtist.isNullOrBlank()) albumArtist = r.albumArtist }
+                if (year.isNullOrBlank() && r.year > 0) year = r.year.toString()
+                if ((trackNumber ?: 0) == 0 && r.trackNo > 0) trackNumber = r.trackNo
+                coverUrls += r.coverUrls
+            }
         coverUrls += CoverFinder.youtubeCandidates(videoId)
         val cover = CoverFinder.fetchFirst(coverUrls)
         if (cover == null) DebugLog.w(TAG, "no cover found among ${coverUrls.size} candidates")
