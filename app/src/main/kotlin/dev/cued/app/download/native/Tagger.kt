@@ -14,7 +14,11 @@ object Tagger {
     data class Meta(
         val title: String, val artists: List<String>, val album: String?, val albumArtist: String?,
         val trackNumber: Int?, val year: String?, val genres: List<String>, val coverUrl: String?, val lyrics: String?, val comment: String?,
+        /** Ready-made JPEG bytes win over [coverUrl]. */
+        val cover: ByteArray? = null,
     )
+
+    private fun coverBytes(meta: Meta): ByteArray? = meta.cover ?: meta.coverUrl?.let { url -> runCatching { coverJpeg(url) }.onFailure { DebugLog.w("tag", "cover fetch failed: $url", it) }.getOrNull() }
 
     fun write(file: File, meta: Meta) {
         if (file.extension.equals("mp3", true)) { writeMp3(file, meta); return }
@@ -30,9 +34,8 @@ object Tagger {
         if (meta.genres.isNotEmpty()) tag.setField(FieldKey.GENRE, meta.genres.joinToString("; "))
         meta.lyrics?.takeIf { it.isNotBlank() }?.let { runCatching { tag.setField(FieldKey.LYRICS, it) } }
         meta.comment?.let { runCatching { tag.setField(FieldKey.COMMENT, it) } }
-        meta.coverUrl?.let { url ->
+        coverBytes(meta)?.let { bytes ->
             runCatching {
-                val bytes = coverJpeg(url) ?: run { DebugLog.w("tag", "cover fetch failed: $url"); return@runCatching }
                 val art = AndroidArtwork().apply { binaryData = bytes; mimeType = "image/jpeg"; pictureType = 3 }
                 tag.deleteArtworkField()
                 tag.setField(art)
@@ -48,7 +51,7 @@ object Tagger {
      * (empty) tag, if any, is stripped.
      */
     private fun writeMp3(file: File, meta: Meta) {
-        val cover = meta.coverUrl?.let { url -> runCatching { coverJpeg(url) }.onFailure { DebugLog.w("tag", "cover fetch failed: $url", it) }.getOrNull() }
+        val cover = coverBytes(meta)
         val tag = dev.cued.core.tag.Id3v2.build(dev.cued.core.tag.Id3v2.Tags(
             title = meta.title, artist = meta.artists.joinToString(", ").ifBlank { null }, album = meta.album,
             albumArtist = meta.albumArtist ?: meta.artists.firstOrNull(), track = meta.trackNumber, year = meta.year?.takeIf { it.isNotBlank() },
@@ -76,15 +79,7 @@ object Tagger {
     }
 
     /** Fetches any image (jpeg/png/webp) and re-encodes it as a ≤800px JPEG, the safest thing to put in a tag. */
-    private fun coverJpeg(url: String): ByteArray? {
-        val raw = fetch(url) ?: return null
-        val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw.takeIf { url.contains(".jpg") || url.contains(".jpeg") }
-        val scale = 800f / maxOf(bmp.width, bmp.height)
-        val out = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
-        val bos = java.io.ByteArrayOutputStream()
-        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, bos)
-        return bos.toByteArray()
-    }
+    private fun coverJpeg(url: String): ByteArray? = CoverFinder.fetchFirst(listOf(url))
 
     private fun fetch(url: String): ByteArray? {
         val conn = URL(url).openConnection() as HttpURLConnection

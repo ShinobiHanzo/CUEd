@@ -159,6 +159,10 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                 Checkbox(checked = settings.fetchLyricsAfter, onCheckedChange = { vm.setFetchLyricsAfter(it) })
                 Column { Text("Look lyrics up in CUEd after download"); Text("Embedded tag first, then lrclib.net if allowed in Settings → Lyrics.", style = MaterialTheme.typography.bodySmall, color = Muted) }
             }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+                Checkbox(checked = settings.enrichOnline, onCheckedChange = { vm.setEnrichOnline(it) })
+                Text("Look up album, year, track number and cover on MusicBrainz for YouTube links and searches", style = MaterialTheme.typography.bodySmall)
+            }
         }
         item {
             SectionHeader("Jobs") {

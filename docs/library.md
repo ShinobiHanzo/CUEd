@@ -48,3 +48,22 @@ away; files from Termux, the companion or other apps belong to someone else in
 MediaStore's eyes, so Android 10+ shows its own confirmation dialog first (one for
 the whole batch on Android 11+). The album page's bin icon deletes a whole album.
 Playlist entries, genres, lyrics and the queue entry go with the track.
+
+## Track details
+
+Track menu → **Track details**. Shows what CUEd has (editable), what is actually inside
+the file (title, artist, album, track, year, genre, cover size, format, bitrate, path),
+and offers: **Find cover** (source link first: Spotify cover or YouTube thumbnail; then
+MusicBrainz + Cover Art Archive; then the top YouTube Music hit), **Look up online**
+(MusicBrainz fills album, album artist, year and track number), **Reload from file**,
+**Write to file** (rewrites the tags: CUEd's own ID3v2 writer for mp3, jaudiotagger
+for m4a; files CUEd didn't create need Android's one-tap consent on 10+), **Save in
+CUEd only**, and **Re-download** (source link, or a search on title + artist).
+
+Downloads from YouTube links and searches used to arrive with the video title, the
+channel as artist and no album, so Android filed them under an album named after the
+folder ("CUEd"). Now the title is cleaned ("(Official Video)" and friends removed,
+"Artist - Title" split), the channel name loses "- Topic"/"VEVO", and, when the
+Downloads toggle allows, MusicBrainz supplies album, year, track number and cover. The
+cover fetch tries several YouTube thumbnail sizes (maxres is often missing) and
+centre-crops the 16:9 frame to a square.

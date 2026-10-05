@@ -299,6 +299,7 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val settings: StateFlow<DownloadSettings> = graph.settings.download.stateIn(viewModelScope, SharingStarted.Eagerly, DownloadSettings(DownloadBackend.BUILT_IN, "", "mp3", false, true, null, null))
     fun setSpotifyKeys(id: String, secret: String) = viewModelScope.launch { graph.settings.setSpotifyKeys(id, secret) }
+    fun setEnrichOnline(on: Boolean) = viewModelScope.launch { graph.settings.setEnrichOnline(on) }
     val termux = TermuxDownloader(graph.app)
 
     fun enqueue(source: String) = graph.downloads.enqueue(source)

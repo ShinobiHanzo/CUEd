@@ -29,6 +29,59 @@ class MusicBrainzClient(private val userAgent: String) {
         val genres: List<Named> = emptyList(), val tags: List<Named> = emptyList(),
     )
     @Serializable private data class SearchResult(val recordings: List<Recording> = emptyList())
+    @Serializable private data class RgRef(val id: String = "", @SerialName("primary-type") val primaryType: String? = null, @SerialName("secondary-types") val secondaryTypes: List<String> = emptyList())
+    @Serializable private data class TrackRef(val number: String? = null, val title: String = "")
+    @Serializable private data class Medium(val format: String? = null, @SerialName("track-count") val trackCount: Int = 0, val track: List<TrackRef> = emptyList())
+    @Serializable private data class ReleaseRef(
+        val id: String, val title: String = "", val status: String? = null, val date: String? = null, val country: String? = null,
+        @SerialName("release-group") val releaseGroup: RgRef? = null, val media: List<Medium> = emptyList(),
+        @SerialName("artist-credit") val artistCredit: List<Credit> = emptyList(),
+    )
+    @Serializable private data class RecordingWithReleases(
+        val id: String, val score: Int = 0, val title: String = "",
+        @SerialName("artist-credit") val artistCredit: List<Credit> = emptyList(),
+        val releases: List<ReleaseRef> = emptyList(),
+    )
+    @Serializable private data class SearchWithReleases(val recordings: List<RecordingWithReleases> = emptyList())
+
+    /** What a recording lookup gives back: enough to tag a file and find its cover. */
+    data class Release(
+        val title: String, val artist: String, val album: String?, val albumArtist: String?, val year: Int, val trackNo: Int,
+        val releaseId: String?, val releaseGroupId: String?, val score: Int,
+    ) {
+        /** Cover Art Archive URLs, most specific first; each may 404. */
+        val coverUrls: List<String> get() = listOfNotNull(
+            releaseId?.let { "https://coverartarchive.org/release/$it/front-500" },
+            releaseGroupId?.let { "https://coverartarchive.org/release-group/$it/front-500" },
+        )
+    }
+
+    /**
+     * Best official album release for a recording, so a YouTube download can
+     * carry a real album, year and track number instead of the folder name.
+     */
+    suspend fun lookup(artist: String, title: String): Release? = withContext(Dispatchers.IO) {
+        val q = "recording:\"${esc(title)}\" AND artist:\"${esc(artist)}\""
+        val search = get("$BASE/recording?query=${enc(q)}&fmt=json&limit=5")?.let { runCatching { json.decodeFromString<SearchWithReleases>(it) }.getOrNull() } ?: return@withContext null
+        val rec = search.recordings.filter { it.score >= 85 }.maxByOrNull { it.score } ?: return@withContext null
+        val credited = rec.artistCredit.joinToString(", ") { it.artist.name }.ifBlank { artist }
+        // Prefer official studio albums, then EPs and singles; earliest date wins among equals.
+        fun rank(r: ReleaseRef): Int {
+            val t = r.releaseGroup?.primaryType?.lowercase()
+            val secondary = r.releaseGroup?.secondaryTypes?.map { it.lowercase() }.orEmpty()
+            var s = when (t) { "album" -> 0; "ep" -> 2; "single" -> 3; else -> 5 }
+            if (secondary.any { it in setOf("compilation", "live", "remix", "soundtrack", "dj-mix") }) s += 4
+            if (r.status?.equals("Official", true) != true) s += 3
+            return s
+        }
+        val rel = rec.releases.sortedWith(compareBy<ReleaseRef> { rank(it) }.thenBy { it.date ?: "9999" }).firstOrNull()
+        val year = rel?.date?.take(4)?.toIntOrNull() ?: 0
+        val trackNo = rel?.media?.firstOrNull()?.track?.firstOrNull()?.number?.toIntOrNull() ?: 0
+        Release(
+            title = rec.title.ifBlank { title }, artist = credited, album = rel?.title, albumArtist = rel?.artistCredit?.joinToString(", ") { it.artist.name }?.ifBlank { null } ?: credited,
+            year = year, trackNo = trackNo, releaseId = rel?.id, releaseGroupId = rel?.releaseGroup?.id, score = rec.score,
+        )
+    }
     @Serializable private data class Artist(val genres: List<Named> = emptyList(), val tags: List<Named> = emptyList())
 
     /** Normalised genre labels for the track, best first; empty if MusicBrainz has nothing. */

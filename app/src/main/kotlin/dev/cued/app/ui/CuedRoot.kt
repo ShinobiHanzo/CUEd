@@ -79,6 +79,7 @@ import dev.cued.app.ui.screens.ReceiveScreen
 import dev.cued.app.ui.screens.SettingsScreen
 import dev.cued.app.ui.screens.ShareScreen
 import dev.cued.app.ui.screens.TrackListScreen
+import dev.cued.app.ui.screens.TrackDetailsScreen
 import dev.cued.core.share.SharePayload
 import java.net.URLEncoder
 import kotlinx.coroutines.flow.StateFlow
@@ -354,6 +355,10 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         reasons = result.associate { it.first.id to it.second }, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
                         onSaveAsPlaylist = { name -> lvm.saveAsPlaylist(name, result.map { it.first.id }) })
                 }
+                composable("track/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
+                    TrackDetailsScreen(lvm, e.arguments!!.getLong("id"), onBack = { nav.popBackStack() },
+                        onRedownload = { src -> dvm.enqueue(src); nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } })
+                }
                 composable("share/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
                     val id = e.arguments!!.getLong("id")
                     val flow = remember(id) { lvm.track(id) }
@@ -393,6 +398,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onAlbum = { nav.navigate("album/${URLEncoder.encode(tr.albumArtist?.takeIf { it.isNotBlank() } ?: dev.cued.core.library.Discography.primaryArtist(tr.artist), "UTF-8")}/${URLEncoder.encode(tr.album, "UTF-8")}") },
             onToggleKind = { lvm.setKind(tr.id, if (tr.isLong) TrackEntity.KIND_MUSIC else TrackEntity.KIND_LONG) },
             onDelete = { deleteTracks(listOf(tr.id)) },
+            onDetails = { nav.navigate("track/${tr.id}") },
             onUnlockGenres = { lvm.unlockGenres(tr.id) },
         )
     }

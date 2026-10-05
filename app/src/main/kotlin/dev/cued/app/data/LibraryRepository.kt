@@ -138,6 +138,12 @@ class LibraryRepository(
     var onScanned: (() -> Unit)? = null
     suspend fun setSourceLink(id: Long, link: String?) = db.tracks().setSourceLink(id, link)
 
+    /** Edits from the Track details screen; the next rescan keeps them unless the file says otherwise. */
+    suspend fun updateDetails(id: Long, title: String, artist: String, album: String, albumArtist: String?, trackNo: Int, year: Int, sourceLink: String?) {
+        val t = db.tracks().byId(id) ?: return
+        db.tracks().update(t.copy(title = title.ifBlank { t.title }, artist = artist.ifBlank { t.artist }, album = album, albumArtist = albumArtist, trackNo = trackNo, year = year, sourceLink = sourceLink))
+    }
+
     suspend fun createPlaylist(name: String, description: String = ""): Long =
         db.playlists().insert(PlaylistEntity(name = name.trim(), createdAt = System.currentTimeMillis(), description = description))
     suspend fun renamePlaylist(id: Long, name: String, description: String) {

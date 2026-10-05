@@ -96,6 +96,8 @@ data class DownloadSettings(
     /** Optional Spotify developer keys for the built-in downloader (full playlists, genres). */
     val spotifyClientId: String?,
     val spotifyClientSecret: String?,
+    /** For YouTube links and searches (no Spotify metadata): ask MusicBrainz for album, year, track number and a cover. */
+    val enrichOnline: Boolean = true,
 )
 
 /** Everything user-tunable, persisted with DataStore. Defaults are the values a DJ-ish listener would expect. */
@@ -129,6 +131,7 @@ class Settings(private val context: Context) {
         val format = stringPreferencesKey("download_format")
         val generateLrc = booleanPreferencesKey("download_generate_lrc")
         val fetchLyricsAfter = booleanPreferencesKey("download_fetch_lyrics_after")
+        val enrich = booleanPreferencesKey("download_enrich_online")
         val spotifyId = stringPreferencesKey("spotify_client_id")
         val spotifySecret = stringPreferencesKey("spotify_client_secret")
         val sharePort = intPreferencesKey("share_port")
@@ -197,6 +200,7 @@ class Settings(private val context: Context) {
             fetchLyricsAfter = p[K.fetchLyricsAfter] ?: true,
             spotifyClientId = p[K.spotifyId]?.takeIf { it.isNotBlank() },
             spotifyClientSecret = p[K.spotifySecret]?.takeIf { it.isNotBlank() },
+            enrichOnline = p[K.enrich] ?: true,
         )
     }
 
@@ -230,5 +234,6 @@ class Settings(private val context: Context) {
     }
     suspend fun setGenerateLrc(on: Boolean) = context.dataStore.edit { it[K.generateLrc] = on }
     suspend fun setFetchLyricsAfter(on: Boolean) = context.dataStore.edit { it[K.fetchLyricsAfter] = on }
+    suspend fun setEnrichOnline(on: Boolean) = context.dataStore.edit { it[K.enrich] = on }
     suspend fun setSharePort(port: Int) = context.dataStore.edit { it[K.sharePort] = port.coerceIn(1024, 65535) }
 }

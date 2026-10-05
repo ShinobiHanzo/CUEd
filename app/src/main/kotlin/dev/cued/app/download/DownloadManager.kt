@@ -120,7 +120,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             db.downloads().update(job.copy(status = STATUS_RUNNING, message = note ?: "Downloading…"))
 
             // 1b. Built-in backend expands Spotify/YouTube albums and playlists itself.
-            val native = if (backend == DownloadBackend.BUILT_IN) dev.cued.app.download.native.NativeDownloader(context, settings.spotifyClientId, settings.spotifyClientSecret) else null
+            val native = if (backend == DownloadBackend.BUILT_IN) dev.cued.app.download.native.NativeDownloader(context, settings.spotifyClientId, settings.spotifyClientSecret, settings.enrichOnline) else null
             if (native != null) {
                 val expandedResult = runCatching { native.expand(source) }
                 if (expandedResult.isFailure) {
@@ -267,6 +267,16 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) else MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
             val uri = context.contentResolver.insert(collection, values) ?: error("MediaStore refused the insert")
             return uri to android.content.ContentUris.parseId(uri)
+        }
+
+        /** Re-index one existing file after its tags were rewritten; waits for the scanner. */
+        fun rescanFile(context: Context, uri: Uri) {
+            val path = runCatching {
+                context.contentResolver.query(uri, arrayOf(MediaStore.Audio.Media.DATA), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            }.getOrNull() ?: return
+            val latch = java.util.concurrent.CountDownLatch(1)
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(path), null) { _, _ -> latch.countDown() }
+            latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
         }
 
         fun finishPending(context: Context, uri: Uri) {

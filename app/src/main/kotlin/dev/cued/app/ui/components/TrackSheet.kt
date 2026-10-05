@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Person
@@ -80,6 +81,7 @@ fun TrackSheet(
     onArtist: (() -> Unit)? = null,
     onAlbum: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onDetails: (() -> Unit)? = null,
     onToggleKind: () -> Unit = {},
     onUnlockGenres: () -> Unit = {},
 ) {
@@ -102,6 +104,7 @@ fun TrackSheet(
                 style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
             )
             Spacer(Modifier.height(8.dp))
+            if (onDetails != null) SheetItem(Icons.Default.Info, "Track details (edit, cover, re-download)") { onDetails(); onDismiss() }
             SheetItem(Icons.Default.PlayArrow, "Play") { onPlay(); onDismiss() }
             SheetItem(Icons.AutoMirrored.Filled.QueueMusic, "Play next") { onPlayNext(); onDismiss() }
             SheetItem(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to queue") { onEnqueue(); onDismiss() }

@@ -23,9 +23,10 @@ import java.io.File
  * Albums and playlists are expanded into one job per track by [expand] so
  * each shows its own progress and can be retried on its own.
  */
-class NativeDownloader(private val context: Context, spotifyClientId: String?, spotifyClientSecret: String?) {
+class NativeDownloader(private val context: Context, spotifyClientId: String?, spotifyClientSecret: String?, private val enrichOnline: Boolean = true) {
     private val spotify = SpotifyClient(spotifyClientId, spotifyClientSecret)
     private val youtube = YouTubeSource()
+    private val musicBrainz = dev.cued.app.genre.MusicBrainzClient("CUEd/${dev.cued.app.BuildConfig.VERSION_NAME} (https://github.com/ShinobiHanzo/CUEd)")
 
     /** For collections: the per-track items. Null when [source] is a single track or a search. */
     suspend fun expand(source: String): LinkResolver.Result.Expanded? = withContext(Dispatchers.IO) {
@@ -89,8 +90,29 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         DebugLog.d(TAG, "stream: ${stream.format?.name} ${stream.averageBitrate} kbps for \"${info.name}\" (${info.duration}s)")
         if (meta?.coverUrl == null) info.thumbnails.maxByOrNull { it.width }?.url?.let(onArtwork)
         var ext = youtube.extensionOf(stream)
-        val title = meta?.title ?: info.name
-        val artists = meta?.artists?.takeIf { it.isNotEmpty() } ?: listOf(info.uploaderName ?: "Unknown artist")
+        val videoId = SourceLinks.parse(ytUrl)?.id ?: ytUrl.substringAfter("v=").substringBefore('&')
+        // No Spotify metadata (a YouTube link or a search): clean the video title and ask MusicBrainz for the rest.
+        var title: String; var artists: List<String>; var album = meta?.album; var albumArtist = meta?.albumArtist
+        var trackNumber = meta?.trackNumber; var year = meta?.year
+        val coverUrls = ArrayList<String>()
+        meta?.coverUrl?.let { coverUrls += it }
+        if (meta != null) { title = meta.title; artists = meta.artists }
+        else {
+            val split = dev.cued.core.download.TitleClean.split(info.name)
+            val uploaderArtist = dev.cued.core.download.TitleClean.artistFromUploader(info.uploaderName)
+            title = split.title
+            artists = listOf(split.artist ?: uploaderArtist ?: "Unknown artist")
+            if (enrichOnline) runCatching { musicBrainz.lookup(artists.first(), title) }
+                .onFailure { DebugLog.w(TAG, "MusicBrainz lookup failed", it) }.getOrNull()?.let { r ->
+                    DebugLog.d(TAG, "MusicBrainz: ${r.artist} - ${r.title} on \"${r.album}\" (${r.year}, #${r.trackNo}, score ${r.score})")
+                    title = r.title; artists = listOf(r.artist); album = r.album; albumArtist = r.albumArtist
+                    if (r.year > 0) year = r.year.toString(); if (r.trackNo > 0) trackNumber = r.trackNo
+                    coverUrls += r.coverUrls
+                }
+        }
+        coverUrls += CoverFinder.youtubeCandidates(videoId)
+        val cover = CoverFinder.fetchFirst(coverUrls)
+        if (cover == null) DebugLog.w(TAG, "no cover found among ${coverUrls.size} candidates")
         val tmp = File(context.cacheDir, "dl").apply { mkdirs() }.let { File(it, "${System.currentTimeMillis()}.$ext") }
         var fileToImport = tmp
         val mp3 = if (format == "mp3") File(tmp.parentFile, tmp.nameWithoutExtension + ".mp3") else null
@@ -104,9 +126,9 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             }
             if (ext == "m4a" || ext == "mp3") runCatching {
                 Tagger.write(fileToImport, Tagger.Meta(
-                    title = title, artists = artists, album = meta?.album, albumArtist = meta?.albumArtist,
-                    trackNumber = meta?.trackNumber, year = meta?.year, genres = meta?.genres.orEmpty(),
-                    coverUrl = meta?.coverUrl ?: info.thumbnails.maxByOrNull { it.width }?.url, lyrics = null,
+                    title = title, artists = artists, album = album, albumArtist = albumArtist,
+                    trackNumber = trackNumber, year = year, genres = meta?.genres.orEmpty(),
+                    coverUrl = null, cover = cover, lyrics = null,
                     comment = if (link?.platform == Platform.SPOTIFY) link.url else ytUrl,
                 ))
             }.onFailure { DebugLog.w(TAG, "tagging failed (file kept untagged)", it) }
@@ -132,7 +154,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             DownloadManager.Outcome.Done(
                 listOf(id), "${artists.first()} - $title · from YouTube Music" + (if (meta != null) " (Spotify metadata)" else "") + tagNote,
                 genresByMediaStoreId = mapOf(id to meta?.genres.orEmpty()),
-                metaByMediaStoreId = mapOf(id to DownloadManager.KnownMeta(title, artists.joinToString(", "), meta?.album, meta?.albumArtist ?: artists.firstOrNull(), meta?.trackNumber ?: 0, meta?.year?.take(4)?.toIntOrNull() ?: 0)),
+                metaByMediaStoreId = mapOf(id to DownloadManager.KnownMeta(title, artists.joinToString(", "), album, albumArtist ?: artists.firstOrNull(), trackNumber ?: 0, year?.take(4)?.toIntOrNull() ?: 0)),
             )
         } finally { tmp.delete(); mp3?.delete() }
     }
