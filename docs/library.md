@@ -38,3 +38,13 @@ is learned or guessed from the network.
 Track numbers, disc numbers, years and album-artist come from MediaStore on every
 rescan (album-artist on Android 11+). Files tagged by the built-in downloader carry
 all four.
+
+## Long-press and delete
+
+Hold any track (rows, album tracks, Home tiles, podcasts) for its menu; the ⋮ button
+does the same. **Delete from device** at the bottom removes the file from the phone,
+not just from CUEd, after a confirmation. Files CUEd downloaded itself go straight
+away; files from Termux, the companion or other apps belong to someone else in
+MediaStore's eyes, so Android 10+ shows its own confirmation dialog first (one for
+the whole batch on Android 11+). The album page's bin icon deletes a whole album.
+Playlist entries, genres, lyrics and the queue entry go with the track.

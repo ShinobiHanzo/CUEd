@@ -110,6 +110,10 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                     comment = if (link?.platform == Platform.SPOTIFY) link.url else ytUrl,
                 ))
             }.onFailure { DebugLog.w(TAG, "tagging failed (file kept untagged)", it) }
+            if (ext == "m4a" || ext == "mp3") {
+                val v = Tagger.verify(fileToImport)
+                if (v.contains("NONE") || v.contains("failed")) DebugLog.w(TAG, v) else DebugLog.i(TAG, v)
+            }
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
             val (uri, id) = DownloadManager.createPendingAudio(context, name, if (ext == "mp3") "audio/mpeg" else youtube.mimeOf(stream))

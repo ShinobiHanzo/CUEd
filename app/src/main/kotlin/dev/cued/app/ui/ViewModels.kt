@@ -98,6 +98,8 @@ class LibraryViewModel(private val graph: Graph) : ViewModel() {
     val unlabelledCount: StateFlow<Int> = graph.genres.unlabelledCount.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     fun unlockGenres(trackId: Long) = viewModelScope.launch { lib.unlockGenres(trackId) }
     fun setKind(trackId: Long, kind: String) = viewModelScope.launch { lib.setKind(trackId, kind) }
+    suspend fun deleteFromDevice(ids: List<Long>) = lib.deleteFromDevice(ids)
+    suspend fun confirmDeleted(ids: List<Long>) = lib.confirmDeleted(ids)
     val smartLists: StateFlow<Map<SmartList, List<TrackEntity>>> = lib.smartLists.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val scanning: StateFlow<Boolean> = lib.scanning
     val analysisPending: StateFlow<Int> = graph.analysis.pending
@@ -217,6 +219,8 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     fun setSpeed(speed: Float) { connection.player?.playbackParameters = PlaybackParameters(speed.coerceIn(0.5f, 3f), 1f) }
     fun seekToQueueItem(index: Int) = connection.player?.seekTo(index, 0L)
     fun removeQueueItem(index: Int) = connection.player?.removeMediaItem(index)
+    /** Drops every queue entry for a track (used after deleting it from the device). */
+    fun removeFromQueue(trackId: Long) { connection.player?.let { p -> for (i in p.mediaItemCount - 1 downTo 0) if (p.getMediaItemAt(i).mediaId == trackId.toString()) p.removeMediaItem(i) } }
     fun toggleShuffle() { connection.player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
     fun cycleRepeat() {
         connection.player?.let {

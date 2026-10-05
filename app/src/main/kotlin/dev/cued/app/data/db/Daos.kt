@@ -47,6 +47,9 @@ interface TrackDao {
     @Query("UPDATE tracks SET resumeMs = :ms WHERE id = :id")
     suspend fun setResume(id: Long, ms: Long)
 
+    @Query("DELETE FROM tracks WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("SELECT * FROM tracks")
     suspend fun allIncludingMissing(): List<TrackEntity>
 
@@ -235,6 +238,9 @@ interface LyricsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(l: LyricsEntity)
+
+    @Query("DELETE FROM lyrics WHERE trackId = :trackId")
+    suspend fun deleteFor(trackId: Long)
 
     @Query("SELECT t.id FROM tracks t LEFT JOIN lyrics l ON l.trackId = t.id WHERE t.missing = 0 AND t.kind = 'music' AND (l.trackId IS NULL OR (l.source = 'none' AND l.fetchedAt < :retryBefore))")
     suspend fun trackIdsWithoutLyrics(retryBefore: Long): List<Long>

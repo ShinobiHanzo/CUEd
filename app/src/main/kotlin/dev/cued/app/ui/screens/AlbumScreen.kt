@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -63,15 +64,20 @@ fun AlbumScreen(
     onTrackMore: (TrackEntity) -> Unit,
     onOpenArtist: (String) -> Unit,
     onSaveAsPlaylist: (String, List<Long>) -> Unit,
+    onDeleteAlbum: ((List<Long>) -> Unit)? = null,
 ) {
     val index by vm.discography.collectAsState()
     val a = index.album(artist, album)
     var showSave by remember { mutableStateOf(false) }
+    var showDelete by remember { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(album) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
-            actions = { if (a != null) IconButton(onClick = { showSave = true }) { Icon(Icons.Default.Save, contentDescription = "Save as playlist") } },
+            actions = {
+                if (a != null) IconButton(onClick = { showSave = true }) { Icon(Icons.Default.Save, contentDescription = "Save as playlist") }
+                if (a != null && onDeleteAlbum != null) IconButton(onClick = { showDelete = true }) { Icon(Icons.Default.DeleteForever, contentDescription = "Delete album from device") }
+            },
         )
     }) { pad ->
         if (a == null) { Column(Modifier.padding(pad).fillMaxSize()) { EmptyHint("Album not in the library") }; return@Scaffold }
@@ -98,6 +104,15 @@ fun AlbumScreen(
             }
             item { Spacer(Modifier.height(96.dp)) }
         }
+    }
+    if (showDelete && a != null && onDeleteAlbum != null) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            title = { Text("Delete album from device?") },
+            text = { Text("All ${a.tracks.size} tracks of \"${a.name}\" will be removed from your phone. Playlists lose them. This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { showDelete = false; onDeleteAlbum(a.tracks.map { it.id }) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
+        )
     }
     if (showSave && a != null) {
         var name by remember { mutableStateOf("${a.artist} – ${a.name}") }

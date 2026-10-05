@@ -131,6 +131,30 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val scope = rememberCoroutineScope()
     var sheetTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var crash by remember { mutableStateOf(dev.cued.app.util.DebugLog.pendingCrash()) }
+    // Delete-from-device: files CUEd didn't create need Android's own confirmation dialog first.
+    var pendingDelete by remember { mutableStateOf<List<Long>>(emptyList()) }
+    val deleteLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        val ids = pendingDelete; pendingDelete = emptyList()
+        if (res.resultCode == android.app.Activity.RESULT_OK && ids.isNotEmpty()) scope.launch {
+            lvm.confirmDeleted(ids); ids.forEach { pvm.removeFromQueue(it) }
+            snackbar.showSnackbar(if (ids.size == 1) "Deleted" else "Deleted ${ids.size} tracks")
+        }
+    }
+    val deleteTracks: (List<Long>) -> Unit = { ids ->
+        scope.launch {
+            when (val r = lvm.deleteFromDevice(ids)) {
+                is dev.cued.app.data.LibraryRepository.DeleteOutcome.Done -> {
+                    ids.forEach { pvm.removeFromQueue(it) }
+                    snackbar.showSnackbar(if (r.failed == 0) (if (r.deleted == 1) "Deleted" else "Deleted ${r.deleted} tracks") else "Deleted ${r.deleted}, couldn't delete ${r.failed}")
+                }
+                is dev.cued.app.data.LibraryRepository.DeleteOutcome.NeedsConsent -> {
+                    pendingDelete = r.ids
+                    runCatching { deleteLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(r.sender).build()) }
+                        .onFailure { pendingDelete = emptyList(); snackbar.showSnackbar("Android refused the delete request") }
+                }
+            }
+        }
+    }
     dev.cued.app.ui.components.BugReportDialog(graph.bugs)
     var pendingDownload by remember { mutableStateOf<String?>(null) }
 
@@ -290,6 +314,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         lvm, artist, album, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
                         onOpenArtist = { nav.navigate("artist/${URLEncoder.encode(it, "UTF-8")}") },
                         onSaveAsPlaylist = { name, ids -> lvm.saveAsPlaylist(name, ids) { scope.launch { snackbar.showSnackbar("Saved as $name") } } },
+                        onDeleteAlbum = { ids -> deleteTracks(ids); nav.popBackStack() },
                     )
                 }
                 composable(Tab.PLAYLISTS.route) { PlaylistsScreen(lvm, onOpen = { nav.navigate("playlist/$it") }) }
@@ -367,6 +392,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onArtist = { nav.navigate("artist/${URLEncoder.encode(tr.albumArtist?.takeIf { it.isNotBlank() } ?: dev.cued.core.library.Discography.primaryArtist(tr.artist), "UTF-8")}") },
             onAlbum = { nav.navigate("album/${URLEncoder.encode(tr.albumArtist?.takeIf { it.isNotBlank() } ?: dev.cued.core.library.Discography.primaryArtist(tr.artist), "UTF-8")}/${URLEncoder.encode(tr.album, "UTF-8")}") },
             onToggleKind = { lvm.setKind(tr.id, if (tr.isLong) TrackEntity.KIND_MUSIC else TrackEntity.KIND_LONG) },
+            onDelete = { deleteTracks(listOf(tr.id)) },
             onUnlockGenres = { lvm.unlockGenres(tr.id) },
         )
     }

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
@@ -75,11 +76,13 @@ fun TrackSheet(
     onAnalyse: () -> Unit,
     onArtist: (() -> Unit)? = null,
     onAlbum: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onToggleKind: () -> Unit = {},
     onUnlockGenres: () -> Unit = {},
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showPlaylists by remember { mutableStateOf(false) }
+    var showDelete by remember { mutableStateOf(false) }
     var showGenres by remember { mutableStateOf(false) }
     var showLink by remember { mutableStateOf(false) }
 
@@ -109,6 +112,7 @@ fun TrackSheet(
             SheetItem(Icons.Default.Link, if (track.sourceLink == null) "Set source link (for re-download sharing)" else "Source: ${track.sourceLink}") { showLink = true }
             if (!track.isLong) SheetItem(Icons.Default.GraphicEq, if (track.analysedAt == null) "Analyse tempo" else "Re-analyse tempo") { onAnalyse(); onDismiss() }
             SheetItem(Icons.Default.SwapHoriz, if (track.isLong) "Move to Music" else "Move to Podcasts & audiobooks") { onToggleKind(); onDismiss() }
+            if (onDelete != null) SheetItem(Icons.Default.DeleteForever, "Delete from device") { showDelete = true }
         }
     }
 
@@ -143,6 +147,15 @@ fun TrackSheet(
         GenreEditor(current = genres, suggestions = allGenres, onDismiss = { showGenres = false }, onSave = { onSetGenres(it); showGenres = false })
     }
 
+    if (showDelete && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            title = { Text("Delete from device?") },
+            text = { Text("\"${track.title}\" will be removed from your phone, not just from CUEd. Playlists lose it. This cannot be undone." + if (track.sourceLink != null) " It can be downloaded again from its source link." else "") },
+            confirmButton = { TextButton(onClick = { showDelete = false; onDelete(); onDismiss() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
+        )
+    }
     if (showLink) {
         var link by remember { mutableStateOf(track.sourceLink.orEmpty()) }
         AlertDialog(

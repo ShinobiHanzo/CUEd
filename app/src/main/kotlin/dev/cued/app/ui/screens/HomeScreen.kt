@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package dev.cued.app.ui.screens
 
 import androidx.compose.foundation.layout.Column
@@ -105,7 +107,7 @@ fun HomeScreen(
                         LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             items(tracks.take(20), key = { it.id }) { t ->
                                 Column(
-                                    Modifier.width(132.dp).padding(8.dp).clickable { onPlay(tracks, tracks.indexOf(t)) },
+                                    Modifier.width(132.dp).padding(8.dp).androidx.compose.foundation.combinedClickable(onClick = { onPlay(tracks, tracks.indexOf(t)) }, onLongClick = { onTrackMore(t) }),
                                 ) {
                                     AlbumArt(t, Modifier.size(116.dp), corner = 12)
                                     Spacer(Modifier.height(6.dp))

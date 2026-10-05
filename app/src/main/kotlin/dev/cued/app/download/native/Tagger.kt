@@ -17,6 +17,7 @@ object Tagger {
     )
 
     fun write(file: File, meta: Meta) {
+        if (file.extension.equals("mp3", true)) { writeMp3(file, meta); return }
         TagOptionSingleton.getInstance().isAndroid = true
         val audio = AudioFileIO.read(file)
         val tag = audio.tagOrCreateAndSetDefault
@@ -41,6 +42,39 @@ object Tagger {
         audio.commit()
     }
 
+    /**
+     * MP3s get a tag written by CUEd's own ID3v2.3 writer (core/tag/Id3v2): no
+     * library in the loop, and the result is verified below. The encoder's own
+     * (empty) tag, if any, is stripped.
+     */
+    private fun writeMp3(file: File, meta: Meta) {
+        val cover = meta.coverUrl?.let { url -> runCatching { coverJpeg(url) }.onFailure { DebugLog.w("tag", "cover fetch failed: $url", it) }.getOrNull() }
+        val tag = dev.cued.core.tag.Id3v2.build(dev.cued.core.tag.Id3v2.Tags(
+            title = meta.title, artist = meta.artists.joinToString(", ").ifBlank { null }, album = meta.album,
+            albumArtist = meta.albumArtist ?: meta.artists.firstOrNull(), track = meta.trackNumber, year = meta.year?.takeIf { it.isNotBlank() },
+            genre = meta.genres.joinToString("; ").ifBlank { null }, comment = meta.comment, lyrics = meta.lyrics,
+            picture = cover?.let { dev.cued.core.tag.Id3v2.Picture("image/jpeg", it) },
+        ))
+        val tmp = File(file.parentFile, file.name + ".tagging")
+        file.inputStream().use { inp -> tmp.outputStream().buffered().use { out -> dev.cued.core.tag.Id3v2.prepend(tag, inp, out) } }
+        check(tmp.length() > file.length() - 10) { "tag write produced a short file" }
+        check(tmp.renameTo(file) || (file.delete() && tmp.renameTo(file))) { "could not replace ${file.name} with the tagged copy" }
+        DebugLog.d("tag", "id3v2 written (${tag.size / 1024} KB, cover ${if (cover != null) "${cover.size / 1024} KB" else "none"})")
+    }
+
+    /** Reads the tags back the way MediaStore will, so the log says whether the cover actually made it. */
+    fun verify(file: File): String {
+        val mmr = android.media.MediaMetadataRetriever()
+        return try {
+            mmr.setDataSource(file.absolutePath)
+            val title = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val artist = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+            val album = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+            val pic = mmr.embeddedPicture?.size ?: 0
+            "verify ${file.extension}: title=${title ?: "-"} artist=${artist ?: "-"} album=${album ?: "-"} cover=${if (pic > 0) "${pic / 1024} KB" else "NONE"}"
+        } catch (e: Exception) { "verify failed: $e" } finally { runCatching { mmr.release() } }
+    }
+
     /** Fetches any image (jpeg/png/webp) and re-encodes it as a ≤800px JPEG, the safest thing to put in a tag. */
     private fun coverJpeg(url: String): ByteArray? {
         val raw = fetch(url) ?: return null
@@ -55,6 +89,8 @@ object Tagger {
     private fun fetch(url: String): ByteArray? {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10_000; conn.readTimeout = 20_000
+        conn.setRequestProperty("User-Agent", NewPipeHttp.USER_AGENT)
+        conn.instanceFollowRedirects = true
         return try { if (conn.responseCode == 200) conn.inputStream.use { it.readBytes() }.takeIf { it.size < 4_000_000 } else null } finally { conn.disconnect() }
     }
 }

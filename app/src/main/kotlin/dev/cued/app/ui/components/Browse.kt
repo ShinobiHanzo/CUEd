@@ -1,7 +1,10 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package dev.cued.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,7 +94,7 @@ fun ArtistRow(artist: Discography.Artist<TrackEntity>, onClick: () -> Unit) {
 /** Numbered row for album pages: track number instead of cover. */
 @Composable
 fun NumberedTrackRow(track: TrackEntity, number: Int, playing: Boolean, onClick: () -> Unit, onMore: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMore).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(if (playing) Teal.copy(alpha = 0.2f) else Ink3), contentAlignment = Alignment.Center) {
             Text(if (number > 0) number.toString() else "·", style = MaterialTheme.typography.labelMedium, color = if (playing) Teal else Muted)
         }

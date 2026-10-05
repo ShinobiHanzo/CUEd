@@ -184,6 +184,60 @@ class LibraryRepository(
 
     fun rescanAsync() { scope.launch { rescan() } }
 
+    /** Result of [deleteFromDevice]: either done, or Android wants the user to confirm through its own dialog first. */
+    sealed class DeleteOutcome {
+        data class Done(val deleted: Int, val failed: Int) : DeleteOutcome()
+        data class NeedsConsent(val sender: android.content.IntentSender, val ids: List<Long>) : DeleteOutcome()
+    }
+
+    /**
+     * Removes the files from the phone, then the rows. Files CUEd wrote itself
+     * delete straight away; files from Termux, the companion or elsewhere are
+     * not ours in MediaStore's eyes, so Android 10+ asks the user to confirm
+     * (one system dialog for the whole batch on 11+). Call [confirmDeleted]
+     * with the same ids once that dialog returns OK.
+     */
+    suspend fun deleteFromDevice(ids: List<Long>): DeleteOutcome = withContext(Dispatchers.IO) {
+        val tracks = db.tracks().byIds(ids)
+        val needConsent = ArrayList<TrackEntity>()
+        var deleted = 0; var failed = 0
+        for (t in tracks) {
+            val uri = Uri.parse(t.uri)
+            var ok = false
+            try {
+                ok = context.contentResolver.delete(uri, null, null) > 0
+            } catch (e: SecurityException) {
+                if (Build.VERSION.SDK_INT >= 30) { needConsent += t; continue }
+                if (Build.VERSION.SDK_INT == 29 && e is android.app.RecoverableSecurityException) {
+                    // Android 10 can only ask per file; the caller confirms and we are called again for the rest.
+                    return@withContext DeleteOutcome.NeedsConsent(e.userAction.actionIntent.intentSender, listOf(t.id))
+                }
+            }
+            if (!ok) {
+                // Already gone from MediaStore, or an old Android without scoped storage: try the path.
+                val f = t.path?.let { java.io.File(it) }
+                ok = f != null && (!f.exists() || f.delete())
+            }
+            if (ok) { forgetTrack(t); deleted++ } else failed++
+        }
+        if (needConsent.isNotEmpty() && Build.VERSION.SDK_INT >= 30) {
+            val pi = MediaStore.createDeleteRequest(context.contentResolver, needConsent.map { Uri.parse(it.uri) })
+            return@withContext DeleteOutcome.NeedsConsent(pi.intentSender, needConsent.map { it.id })
+        }
+        DeleteOutcome.Done(deleted, failed)
+    }
+
+    /** After the system delete dialog returned OK: the files are gone, drop the rows. */
+    suspend fun confirmDeleted(ids: List<Long>) = withContext(Dispatchers.IO) {
+        for (t in db.tracks().byIds(ids)) forgetTrack(t)
+    }
+
+    private suspend fun forgetTrack(t: TrackEntity) {
+        db.lyrics().deleteFor(t.id)
+        db.tracks().deleteById(t.id) // playlist rows and genres cascade
+        runCatching { t.spectrogramPath?.let { java.io.File(it).delete() } }
+    }
+
     /**
      * Pulls every music file MediaStore knows about into the database.
      * Existing rows keep their user data; files that vanished are flagged
