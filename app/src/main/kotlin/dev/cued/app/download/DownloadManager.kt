@@ -47,6 +47,23 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             nativeTest.value = dev.cued.app.download.native.NativeDownloader(context, s.spotifyClientId, s.spotifyClientSecret).selfTest()
         }
     }
+    /**
+     * Progress ticks arrive from IO threads several times a second. Each is one
+     * atomic UPDATE guarded on status = RUNNING (no read-modify-write), written
+     * at most once per percent, so a tick that lands after completion cannot
+     * resurrect the job as "running at 99%".
+     */
+    private fun progressWriter(jobId: Long): (Float) -> Unit {
+        var last = -1f
+        return { p ->
+            val q = (p * 100).toInt() / 100f
+            if (q != last && (q - last >= 0.01f || q >= 1f)) {
+                last = q
+                graph.appScope.launch { db.downloads().setProgress(jobId, q) }
+            }
+        }
+    }
+
     fun repairTermux() { termuxTest.value = "Repairing spotdl in Termux. This reinstalls it for the current Python and can take several minutes…"; if (!TermuxDownloader(context).repair()) termuxTest.value = "Termux not installed or permission not granted" }
     fun testTermux() { termuxTest.value = "Running in Termux…"; if (!TermuxDownloader(context).test()) termuxTest.value = "Termux not installed or permission not granted" }
 
@@ -140,25 +157,22 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             // 2. Run it.
             val result = runCatching {
                 when (backend) {
-                    DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format, onProgress = { p ->
-                        graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
-                    }, onArtwork = { url -> graph.appScope.launch { db.downloads().setArtwork(job.id, url) } })
+                    DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format, onProgress = progressWriter(job.id),
+                        onArtwork = { url -> graph.appScope.launch { db.downloads().setArtwork(job.id, url) } })
                     DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
-                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc) { p ->
-                        graph.appScope.launch { db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(progress = p)) } }
-                    }
+                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc, progressWriter(job.id))
                 }
             }
             result.onFailure { e ->
                 Log.w(TAG, "download failed", e)
                 DebugLog.e(TAG, "job #${job.id} failed: ${e.message}", e)
-                db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_FAILED, message = e.message ?: e.toString(), finishedAt = System.currentTimeMillis())) }
+                db.downloads().finish(job.id, STATUS_FAILED, db.downloads().byId(job.id)?.progress ?: 0f, e.message ?: e.toString(), System.currentTimeMillis())
             }.onSuccess { outcome ->
                 when (outcome) {
                     is Outcome.Handed -> db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) }
                     is Outcome.Done -> {
                         DebugLog.i(TAG, "job #${job.id} done: ${outcome.summary} ids=${outcome.mediaStoreIds}")
-                        db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_DONE, progress = 1f, message = outcome.summary, finishedAt = System.currentTimeMillis())) }
+                        db.downloads().finish(job.id, STATUS_DONE, 1f, outcome.summary, System.currentTimeMillis())
                         afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId, outcome.metaByMediaStoreId)
                     }
                 }
@@ -171,7 +185,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         DebugLog.i(TAG, "termux job #$jobId complete ok=$ok: $message")
         graph.appScope.launch {
             val j = db.downloads().byId(jobId) ?: return@launch
-            db.downloads().update(j.copy(status = if (ok) STATUS_DONE else STATUS_FAILED, progress = if (ok) 1f else j.progress, message = message, finishedAt = System.currentTimeMillis()))
+            db.downloads().finish(jobId, if (ok) STATUS_DONE else STATUS_FAILED, if (ok) 1f else j.progress, message, System.currentTimeMillis())
             if (ok) {
                 scanDownloadFolder()
                 afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap(), emptyMap())

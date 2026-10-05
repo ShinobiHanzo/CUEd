@@ -226,6 +226,13 @@ interface DownloadJobDao {
 
     @Query("UPDATE download_jobs SET artworkUrl = :url WHERE id = :id")
     suspend fun setArtwork(id: Long, url: String?)
+
+    /** Atomic and status-guarded: a late progress tick can never drag a finished job back to RUNNING. */
+    @Query("UPDATE download_jobs SET progress = :p WHERE id = :id AND status = 'RUNNING'")
+    suspend fun setProgress(id: Long, p: Float)
+
+    @Query("UPDATE download_jobs SET status = :status, progress = :progress, message = :message, finishedAt = :finishedAt WHERE id = :id")
+    suspend fun finish(id: Long, status: String, progress: Float, message: String?, finishedAt: Long?)
 }
 
 @Dao
