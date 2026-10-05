@@ -159,7 +159,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                     is Outcome.Done -> {
                         DebugLog.i(TAG, "job #${job.id} done: ${outcome.summary} ids=${outcome.mediaStoreIds}")
                         db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(status = STATUS_DONE, progress = 1f, message = outcome.summary, finishedAt = System.currentTimeMillis())) }
-                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId)
+                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId, outcome.metaByMediaStoreId)
                     }
                 }
             }
@@ -180,8 +180,15 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         }
     }
 
-    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>, genresByMediaStoreId: Map<Long, List<String>> = emptyMap()) {
+    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>, genresByMediaStoreId: Map<Long, List<String>> = emptyMap(), metaByMediaStoreId: Map<Long, KnownMeta> = emptyMap()) {
         graph.library.rescan()
+        // MediaStore sometimes publishes a row before it has read the tags; our own tags win until it catches up.
+        for ((msId, m) in metaByMediaStoreId) db.tracks().byMediaStoreId(msId)?.let { t ->
+            if (t.artist == "Unknown artist" || t.title != m.title || t.album != (m.album ?: "")) {
+                DebugLog.d(TAG, "patching row #${t.id} from download meta (MediaStore had \"${t.title}\" / \"${t.artist}\")")
+                db.tracks().update(t.copy(title = m.title, artist = m.artist, album = m.album ?: t.album, albumArtist = m.albumArtist ?: t.albumArtist, trackNo = if (m.trackNo > 0) m.trackNo else t.trackNo, year = if (m.year > 0) m.year else t.year))
+            }
+        }
         // Which tracks are new? Companion tells us the MediaStore ids; Termux doesn't, so fall back to "added since the job started".
         val tracks = if (mediaStoreIds.isNotEmpty()) mediaStoreIds.mapNotNull { db.tracks().byMediaStoreId(it) }
         else db.tracks().addedSince(since - 60_000L)
@@ -220,7 +227,17 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     sealed class Outcome {
         /** Termux took the command; a broadcast will tell us when it is done. */
         data object Handed : Outcome()
-        data class Done(val mediaStoreIds: List<Long>, val summary: String, val lrcByBase: Map<String, String> = emptyMap(), val genresByMediaStoreId: Map<Long, List<String>> = emptyMap()) : Outcome()
+        data class Done(
+            val mediaStoreIds: List<Long>, val summary: String, val lrcByBase: Map<String, String> = emptyMap(),
+            val genresByMediaStoreId: Map<Long, List<String>> = emptyMap(),
+            /** Tags the downloader wrote itself, so the library row is right even if MediaStore has not read the file yet. */
+            val metaByMediaStoreId: Map<Long, KnownMeta> = emptyMap(),
+        ) : Outcome()
+    }
+
+    /** What the built-in downloader knows about a file it just wrote. */
+    data class KnownMeta(val title: String, val artist: String, val album: String?, val albumArtist: String?, val trackNo: Int, val year: Int) {
+        companion object { }
     }
 
     companion object {
@@ -255,6 +272,15 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         fun finishPending(context: Context, uri: Uri) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }, null, null)
+            }
+            // Ask the scanner outright (and wait for it) so tags and the cover are indexed before we rescan.
+            val path = runCatching {
+                context.contentResolver.query(uri, arrayOf(MediaStore.Audio.Media.DATA), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            }.getOrNull()
+            if (path != null) {
+                val latch = java.util.concurrent.CountDownLatch(1)
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(path), null) { _, _ -> latch.countDown() }
+                latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
             }
         }
     }

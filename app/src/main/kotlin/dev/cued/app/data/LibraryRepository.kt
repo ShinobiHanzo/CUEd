@@ -281,8 +281,13 @@ class LibraryRepository(
                     val msId = c.getLong(iId)
                     seen += msId
                     val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, msId).toString()
-                    val title = c.getString(iTitle)?.takeIf { it.isNotBlank() } ?: "Untitled"
-                    val artist = c.getString(iArtist)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown artist"
+                    val old0 = existing[c.getLong(iId)]
+                    val rawTitle = c.getString(iTitle)?.takeIf { it.isNotBlank() }
+                    val rawArtist = c.getString(iArtist)?.takeIf { it.isNotBlank() && it != "<unknown>" }
+                    // A row we already filled from download tags keeps them while MediaStore still reports placeholders.
+                    val fileBase = c.getString(iData)?.substringAfterLast('/')?.substringBeforeLast('.')
+                    val title = rawTitle?.takeIf { it != fileBase || old0 == null } ?: old0?.title ?: rawTitle ?: "Untitled"
+                    val artist = rawArtist ?: old0?.artist?.takeIf { it != "Unknown artist" } ?: "Unknown artist"
                     val album = c.getString(iAlbum)?.takeIf { it.isNotBlank() } ?: ""
                     val albumId = c.getLong(iAlbumId).takeIf { it > 0 }
                     val duration = c.getLong(iDuration)

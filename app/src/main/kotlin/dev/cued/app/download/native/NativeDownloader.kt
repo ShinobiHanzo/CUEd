@@ -110,9 +110,16 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                     comment = if (link?.platform == Platform.SPOTIFY) link.url else ytUrl,
                 ))
             }.onFailure { DebugLog.w(TAG, "tagging failed (file kept untagged)", it) }
+            var tagNote = ""
             if (ext == "m4a" || ext == "mp3") {
                 val v = Tagger.verify(fileToImport)
                 if (v.contains("NONE") || v.contains("failed")) DebugLog.w(TAG, v) else DebugLog.i(TAG, v)
+                tagNote = when {
+                    v.contains("failed") -> " · tags unreadable"
+                    v.contains("title=-") -> " · tags missing"
+                    v.contains("cover=NONE") -> " · no cover"
+                    else -> " · tags ✓ cover ✓"
+                }
             }
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
@@ -122,7 +129,11 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
             DownloadManager.finishPending(context, uri)
             onProgress(1f)
-            DownloadManager.Outcome.Done(listOf(id), "${artists.first()} - $title · from YouTube Music" + if (meta != null) " (Spotify metadata)" else "", genresByMediaStoreId = mapOf(id to meta?.genres.orEmpty()))
+            DownloadManager.Outcome.Done(
+                listOf(id), "${artists.first()} - $title · from YouTube Music" + (if (meta != null) " (Spotify metadata)" else "") + tagNote,
+                genresByMediaStoreId = mapOf(id to meta?.genres.orEmpty()),
+                metaByMediaStoreId = mapOf(id to DownloadManager.KnownMeta(title, artists.joinToString(", "), meta?.album, meta?.albumArtist ?: artists.firstOrNull(), meta?.trackNumber ?: 0, meta?.year?.take(4)?.toIntOrNull() ?: 0)),
+            )
         } finally { tmp.delete(); mp3?.delete() }
     }
 
