@@ -120,7 +120,7 @@ fun TrackDetailsScreen(vm: LibraryViewModel, trackId: Long, onBack: () -> Unit, 
             graph.library.updateDetails(t.id, m.title, m.artists.joinToString(", "), m.album ?: "", m.albumArtist, m.trackNumber ?: 0, m.year?.take(4)?.toIntOrNull() ?: 0, m.comment)
             if (!writeFile) { busy = null; status = "Saved to the library (file untouched)"; return@launch }
             when (val r = files.write(t, m, keepCover = newCover == null)) {
-                is TrackFile.WriteResult.Done -> { status = "Tags written to the file"; newCover = null; Artwork.forget(t.uri); graph.library.rescanAsync(); refreshFile(t) }
+                is TrackFile.WriteResult.Done -> { newCover = null; Artwork.forget(t.uri); graph.library.rescan(); refreshFile(t); status = "Tags written. " + (fileTags?.let { "Android now reads: ${it.title ?: "-"} / ${it.artist ?: "-"} / ${it.album ?: "-"}" } ?: "") }
                 is TrackFile.WriteResult.NeedsConsent -> { status = "Android is asking for permission to change this file…"; pendingWrite = { save(true) }; consent.launch(IntentSenderRequest.Builder(r.sender).build()) }
                 is TrackFile.WriteResult.Failed -> status = "Couldn't write the file: ${r.reason}"
             }
@@ -134,6 +134,10 @@ fun TrackDetailsScreen(vm: LibraryViewModel, trackId: Long, onBack: () -> Unit, 
         val t = track
         if (t == null) { Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) { Text("Track not found", color = Muted) }; return@Scaffold }
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+            if (t.missing) Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Text("Hidden from the library: the last scan didn't find this file, or Android couldn't read it.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = { scope.launch { dev.cued.app.download.DownloadManager.rescanFile(graph.app, android.net.Uri.parse(t.uri)); graph.library.rescan(); refreshFile(t) } }) { Text("Re-check the file") }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val nc = newCover
                 if (nc != null) {

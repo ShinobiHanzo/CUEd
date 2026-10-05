@@ -264,7 +264,10 @@ class LibraryRepository(
             if (hasGenreColumn) projection += MediaStore.Audio.Media.GENRE
             val hasAlbumArtist = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
             if (hasAlbumArtist) projection += ALBUM_ARTIST_COLUMN
-            val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 15000"
+            // No SQL filter on music/duration: a file whose tags were just rewritten can briefly report
+            // duration 0 or is_music 0 while the scanner catches up, and must not vanish from the library.
+            projection += MediaStore.Audio.Media.IS_MUSIC
+            val selection: String? = null
             val existing = db.tracks().allIncludingMissing().associateBy { it.mediaStoreId }
             // One transaction for the whole pass: a first scan or a schema upgrade touches every row.
             db.withTransaction {
@@ -296,7 +299,12 @@ class LibraryRepository(
                     val artist = rawArtist ?: old0?.artist?.takeIf { it != "Unknown artist" } ?: "Unknown artist"
                     val album = c.getString(iAlbum)?.takeIf { it.isNotBlank() } ?: ""
                     val albumId = c.getLong(iAlbumId).takeIf { it > 0 }
-                    val duration = c.getLong(iDuration)
+                    val iMusic = c.getColumnIndex(MediaStore.Audio.Media.IS_MUSIC)
+                    val isMusic = iMusic < 0 || c.getInt(iMusic) != 0
+                    val rawDuration = c.getLong(iDuration)
+                    val old = existing[msId]
+                    if (old == null && (!isMusic || rawDuration <= 15_000L)) continue // ringtones, notifications, clips
+                    val duration = if (rawDuration > 0) rawDuration else old?.durationMs ?: 0L
                     val added = c.getLong(iAdded) * 1000L
                     val path = c.getString(iData)
                     val genre = if (iGenre >= 0) c.getString(iGenre) else null
@@ -306,7 +314,6 @@ class LibraryRepository(
                     val trackNo = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack.coerceAtLeast(0)
                     val year = if (iYear >= 0 && !c.isNull(iYear)) c.getInt(iYear).takeIf { it in 1900..2100 } ?: 0 else 0
                     val albumArtist = if (iAlbumArtist >= 0) c.getString(iAlbumArtist)?.takeIf { it.isNotBlank() && it != "<unknown>" } else null
-                    val old = existing[msId]
                     if (old == null) {
                         val id = db.tracks().insert(
                             TrackEntity(
