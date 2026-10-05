@@ -3,6 +3,7 @@
 package dev.cued.app.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -80,7 +81,7 @@ fun LongPlaysScreen(vm: LibraryViewModel, playingId: Long?, onBack: () -> Unit, 
 
 @Composable
 private fun LongRow(t: TrackEntity, playing: Boolean, onClick: () -> Unit, onMore: () -> Unit) {
-    Column(Modifier.fillMaxWidth().androidx.compose.foundation.combinedClickable(onClick = onClick, onLongClick = onMore).padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMore).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AlbumArt(t, Modifier.size(56.dp), corner = 10, px = dev.cued.app.ui.components.Artwork.SMALL)
             Spacer(Modifier.width(12.dp))

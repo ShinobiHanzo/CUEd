@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -107,7 +108,7 @@ fun HomeScreen(
                         LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             items(tracks.take(20), key = { it.id }) { t ->
                                 Column(
-                                    Modifier.width(132.dp).padding(8.dp).androidx.compose.foundation.combinedClickable(onClick = { onPlay(tracks, tracks.indexOf(t)) }, onLongClick = { onTrackMore(t) }),
+                                    Modifier.width(132.dp).padding(8.dp).combinedClickable(onClick = { onPlay(tracks, tracks.indexOf(t)) }, onLongClick = { onTrackMore(t) }),
                                 ) {
                                     AlbumArt(t, Modifier.size(116.dp), corner = 12)
                                     Spacer(Modifier.height(6.dp))
