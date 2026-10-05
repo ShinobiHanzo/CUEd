@@ -86,7 +86,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             }
         }
         onProgress(0.1f)
-        val (info, stream) = youtube.info(ytUrl)
+        val (info, stream) = youtube.info(ytUrl, preferM4a = format != "mp3")
         DebugLog.d(TAG, "stream: ${stream.format?.name} ${stream.averageBitrate} kbps for \"${info.name}\" (${info.duration}s)")
         if (meta?.coverUrl == null) info.thumbnails.maxByOrNull { it.width }?.url?.let(onArtwork)
         var ext = youtube.extensionOf(stream)
@@ -116,6 +116,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         val tmp = File(context.cacheDir, "dl").apply { mkdirs() }.let { File(it, "${System.currentTimeMillis()}.$ext") }
         var fileToImport = tmp
         val mp3 = if (format == "mp3") File(tmp.parentFile, tmp.nameWithoutExtension + ".mp3") else null
+        // m4a wanted but YouTube only had Opus/WebM: decode and re-encode to AAC so the result is a real m4a.
+        val aac = if (format != "mp3" && ext != "m4a") File(tmp.parentFile, tmp.nameWithoutExtension + ".aac.m4a") else null
         try {
             youtube.download(stream, tmp) { p -> onProgress(0.1f + (if (mp3 != null) 0.4f else 0.8f) * p) }
             DebugLog.d(TAG, "downloaded ${tmp.length()} bytes")
@@ -123,6 +125,14 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 Mp3Encoder.encode(tmp, mp3) { p -> onProgress(0.5f + 0.4f * p) }
                 DebugLog.d(TAG, "mp3 ${mp3.length()} bytes")
                 fileToImport = mp3; ext = "mp3"
+            } else if (aac != null) {
+                val wav = File(tmp.parentFile, tmp.nameWithoutExtension + ".wav")
+                try {
+                    Mp3Encoder.decodeToWav(tmp, wav) { p -> onProgress(0.5f + 0.2f * p) }
+                    AacEncoder.encode(wav, aac) { p -> onProgress(0.7f + 0.2f * p) }
+                } finally { wav.delete() }
+                DebugLog.d(TAG, "transcoded $ext → aac: ${aac.length()} bytes")
+                fileToImport = aac; ext = "m4a"
             } else if (ext == "m4a" && dev.cued.core.tag.Mp4Tags.isFragmented(tmp)) {
                 // YouTube's m4a is a DASH fragment stream; store a plain MP4 so every player and tagger can read it.
                 val plain = File(tmp.parentFile, tmp.nameWithoutExtension + ".plain.m4a")
@@ -154,7 +164,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             if (!probe.first) error("The downloaded file isn't playable (${probe.second}); nothing was added to the library")
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
-            val (uri, id) = DownloadManager.createPendingAudio(context, name, if (ext == "mp3") "audio/mpeg" else youtube.mimeOf(stream))
+            val (uri, id) = DownloadManager.createPendingAudio(context, name, when (ext) { "mp3" -> "audio/mpeg"; "m4a" -> "audio/mp4"; else -> youtube.mimeOf(stream) })
             try {
                 context.contentResolver.openOutputStream(uri)!!.use { out -> fileToImport.inputStream().use { it.copyTo(out) } }
             } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
@@ -165,7 +175,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 genresByMediaStoreId = mapOf(id to meta?.genres.orEmpty()),
                 metaByMediaStoreId = mapOf(id to DownloadManager.KnownMeta(title, artists.joinToString(", "), album, albumArtist ?: artists.firstOrNull(), trackNumber ?: 0, year?.take(4)?.toIntOrNull() ?: 0)),
             )
-        } finally { tmp.delete(); mp3?.delete() }
+        } finally { tmp.delete(); mp3?.delete(); aac?.delete() }
     }
 
     /** Quick health check: search + stream probe, no download. */

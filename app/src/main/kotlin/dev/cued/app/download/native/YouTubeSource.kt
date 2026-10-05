@@ -1,6 +1,7 @@
 package dev.cued.app.download.native
 
 import dev.cued.core.download.Matcher
+import dev.cued.app.util.DebugLog
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.localization.ContentCountry
@@ -32,7 +33,8 @@ class YouTubeSource {
         }
     }
 
-    fun info(url: String): Pair<StreamInfo, AudioStream> {
+    /** [preferM4a]: pick an AAC stream when one exists (no transcode needed for m4a output); otherwise the best bitrate wins. */
+    fun info(url: String, preferM4a: Boolean = true): Pair<StreamInfo, AudioStream> {
         val info = try { StreamInfo.getInfo(ServiceList.YouTube, url) } catch (e: org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException) {
             val m = e.message.orEmpty()
             if (m.contains("not a bot", true) || m.contains("Sign in", true) || m.contains("reloaded", true))
@@ -41,8 +43,9 @@ class YouTubeSource {
         }
         val audio = info.audioStreams
             .filter { it.isUrl && it.content.isNotBlank() }
-            .sortedWith(compareByDescending<AudioStream> { it.format?.name == "M4A" }.thenByDescending { it.averageBitrate })
+            .sortedWith(compareByDescending<AudioStream> { preferM4a && it.format == org.schabi.newpipe.extractor.MediaFormat.M4A }.thenByDescending { it.averageBitrate })
             .firstOrNull() ?: error("No downloadable audio stream for $url")
+        DebugLog.d("yt", "audio streams: " + info.audioStreams.joinToString { "${it.format?.suffix ?: "?"}@${it.averageBitrate}" } + " → ${audio.format?.suffix}@${audio.averageBitrate}")
         return info to audio
     }
 
@@ -51,9 +54,13 @@ class YouTubeSource {
         return Found(url, info.name, info.uploaderName ?: "", info.duration.toInt().takeIf { it > 0 }, info.thumbnails.maxByOrNull { it.width }?.url)
     }
 
-    /** Extension for the chosen stream's container. */
-    fun extensionOf(stream: AudioStream): String = when (stream.format?.name) { "M4A" -> "m4a"; "WEBMA", "WEBMA_OPUS" -> "webm"; "OPUS" -> "opus"; "MP3" -> "mp3"; else -> "m4a" }
-    fun mimeOf(stream: AudioStream): String = when (extensionOf(stream)) { "m4a" -> "audio/mp4"; "webm" -> "audio/webm"; "opus" -> "audio/ogg"; "mp3" -> "audio/mpeg"; else -> "audio/mp4" }
+    /**
+     * Extension for the chosen stream's container, from the extractor's own
+     * suffix. (An earlier version compared the human-readable name "WebM Opus"
+     * against "WEBMA_OPUS", never matched, and saved Opus streams as .m4a.)
+     */
+    fun extensionOf(stream: AudioStream): String = stream.format?.suffix?.lowercase()?.takeIf { it.isNotBlank() } ?: "bin"
+    fun mimeOf(stream: AudioStream): String = stream.format?.mimeType ?: "application/octet-stream"
 
     /** Downloads in ranged chunks (YouTube throttles single long reads). */
     fun download(stream: AudioStream, dest: File, onProgress: (Float) -> Unit) {
