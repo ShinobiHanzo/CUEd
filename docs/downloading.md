@@ -130,3 +130,14 @@ output). If the repair itself fails on `curl_cffi`, run in Termux:
 pkg install -y libcurl clang rust
 pip install --force-reinstall --no-cache-dir spotdl
 ```
+
+## m4a files and tags
+
+YouTube serves its AAC audio as a fragmented MP4 (DASH). Tag libraries that rewrite
+such a file in place corrupt it, which is what "the retagged copy isn't readable" meant.
+CUEd now remuxes the stream into a plain MP4 with the platform muxer (sample copy, no
+re-encode) at download time, and again on demand when Track details writes to an older
+file, then writes the `ilst` metadata itself (`core/tag/Mp4Tags`, unit-tested). mp3
+tags come from `core/tag/Id3v2`. There is no third-party tag library in the app any
+more. Nothing is imported into the library until the platform extractor confirms it
+plays, and a queue stops after five unplayable items in a row instead of cycling.

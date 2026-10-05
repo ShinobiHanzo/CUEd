@@ -123,6 +123,12 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 Mp3Encoder.encode(tmp, mp3) { p -> onProgress(0.5f + 0.4f * p) }
                 DebugLog.d(TAG, "mp3 ${mp3.length()} bytes")
                 fileToImport = mp3; ext = "mp3"
+            } else if (ext == "m4a" && dev.cued.core.tag.Mp4Tags.isFragmented(tmp)) {
+                // YouTube's m4a is a DASH fragment stream; store a plain MP4 so every player and tagger can read it.
+                val plain = File(tmp.parentFile, tmp.nameWithoutExtension + ".plain.m4a")
+                dev.cued.app.tagging.Remux.toPlainMp4(tmp, plain)
+                tmp.delete(); plain.renameTo(tmp)
+                DebugLog.d(TAG, "remuxed to plain mp4: ${tmp.length()} bytes")
             }
             if (ext == "m4a" || ext == "mp3") runCatching {
                 Tagger.write(fileToImport, Tagger.Meta(
@@ -143,6 +149,9 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                     else -> " · tags ✓ cover ✓"
                 }
             }
+            // Never import something the phone cannot play.
+            val probe = Tagger.probe(fileToImport)
+            if (!probe.first) error("The downloaded file isn't playable (${probe.second}); nothing was added to the library")
             onProgress(0.95f)
             val name = safe("${artists.joinToString(", ")} - $title") + ".$ext"
             val (uri, id) = DownloadManager.createPendingAudio(context, name, if (ext == "mp3") "audio/mpeg" else youtube.mimeOf(stream))

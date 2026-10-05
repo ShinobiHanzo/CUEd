@@ -97,6 +97,7 @@ class CrossfadePlayer(
                 .build()
             player.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) consecutiveErrors = 0
                     if (playbackState == Player.STATE_ENDED && this@Deck === active && transition == null) onActiveEnded()
                     invalidateState()
                 }
@@ -479,9 +480,15 @@ class CrossfadePlayer(
         invalidateState()
     }
 
+    private var consecutiveErrors = 0
+
     private fun skipBroken() {
+        consecutiveErrors++
         val next = nextIndex()
-        if (next == null || next == currentIndex) { stopTicking(); return }
+        if (next == null || next == currentIndex || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            dev.cued.app.util.DebugLog.w("player", "stopping after $consecutiveErrors unplayable item(s) in a row")
+            stopTicking(); return
+        }
         handler.post {
             currentIndex = next
             active.stopAndClear()
@@ -659,6 +666,8 @@ class CrossfadePlayer(
 
     companion object {
         private const val TAG = "CrossfadePlayer"
+        /** Unplayable items skipped in a row before playback stops instead of cycling through a broken queue. */
+        private const val MAX_CONSECUTIVE_ERRORS = 5
         private const val TICK_MS = 50L
         private const val PROGRESS_EVERY_MS = 5_000L
         private const val ARM_BEFORE_END_MS = 40_000L

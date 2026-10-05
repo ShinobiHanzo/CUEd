@@ -1,15 +1,11 @@
 package dev.cued.app.download.native
 
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.tag.FieldKey
-import org.jaudiotagger.tag.TagOptionSingleton
-import org.jaudiotagger.tag.images.AndroidArtwork
 import dev.cued.app.util.DebugLog
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Writes title/artist/album/cover/genre/lyrics into the downloaded file (MP4 and MP3 supported). */
+/** Writes title/artist/album/cover/genre/lyrics into the downloaded file: mp3 via core/tag/Id3v2, m4a via core/tag/Mp4Tags. No tag library. */
 object Tagger {
     data class Meta(
         val title: String, val artists: List<String>, val album: String?, val albumArtist: String?,
@@ -22,27 +18,34 @@ object Tagger {
 
     fun write(file: File, meta: Meta) {
         if (file.extension.equals("mp3", true)) { writeMp3(file, meta); return }
-        TagOptionSingleton.getInstance().isAndroid = true
-        val audio = AudioFileIO.read(file)
-        val tag = audio.tagOrCreateAndSetDefault
-        tag.setField(FieldKey.TITLE, meta.title)
-        if (meta.artists.isNotEmpty()) tag.setField(FieldKey.ARTIST, meta.artists.joinToString(", "))
-        meta.album?.let { tag.setField(FieldKey.ALBUM, it) }
-        (meta.albumArtist ?: meta.artists.firstOrNull())?.let { tag.setField(FieldKey.ALBUM_ARTIST, it) }
-        meta.trackNumber?.let { runCatching { tag.setField(FieldKey.TRACK, it.toString()) } }
-        meta.year?.takeIf { it.isNotBlank() }?.let { runCatching { tag.setField(FieldKey.YEAR, it) } }
-        if (meta.genres.isNotEmpty()) tag.setField(FieldKey.GENRE, meta.genres.joinToString("; "))
-        meta.lyrics?.takeIf { it.isNotBlank() }?.let { runCatching { tag.setField(FieldKey.LYRICS, it) } }
-        meta.comment?.let { runCatching { tag.setField(FieldKey.COMMENT, it) } }
-        coverBytes(meta)?.let { bytes ->
-            runCatching {
-                val art = AndroidArtwork().apply { binaryData = bytes; mimeType = "image/jpeg"; pictureType = 3 }
-                tag.deleteArtworkField()
-                tag.setField(art)
-                DebugLog.d("tag", "cover embedded (${bytes.size / 1024} KB)")
-            }.onFailure { DebugLog.w("tag", "cover embed failed", it) }
+        writeMp4(file, meta)
+    }
+
+    /**
+     * M4A: YouTube's audio is a fragmented MP4, which no in-place tagger can
+     * safely rewrite, so it is first remuxed (sample copy, no re-encode) into
+     * a plain MP4 and then gets an iTunes-style ilst from core/tag/Mp4Tags.
+     */
+    private fun writeMp4(file: File, meta: Meta) {
+        var src = file
+        val plain = File(file.parentFile, file.nameWithoutExtension + ".plain.m4a")
+        if (dev.cued.core.tag.Mp4Tags.isFragmented(file)) {
+            dev.cued.app.tagging.Remux.toPlainMp4(file, plain)
+            src = plain
+            DebugLog.d("tag", "remuxed fragmented m4a (${file.length()} → ${plain.length()} bytes)")
         }
-        audio.commit()
+        val tagged = File(file.parentFile, file.name + ".tagging")
+        try {
+            val cover = coverBytes(meta)
+            dev.cued.core.tag.Mp4Tags.write(src, tagged, dev.cued.core.tag.Mp4Tags.Tags(
+                title = meta.title, artist = meta.artists.joinToString(", ").ifBlank { null }, album = meta.album,
+                albumArtist = meta.albumArtist ?: meta.artists.firstOrNull(), track = meta.trackNumber, year = meta.year?.takeIf { it.isNotBlank() },
+                genre = meta.genres.joinToString("; ").ifBlank { null }, comment = meta.comment, lyrics = meta.lyrics, cover = cover,
+            ))
+            check(tagged.length() > src.length() - 1_048_576) { "tag write produced a short file" }
+            check(tagged.renameTo(file) || (file.delete() && tagged.renameTo(file))) { "could not replace ${file.name} with the tagged copy" }
+            DebugLog.d("tag", "ilst written (cover ${if (cover != null) "${cover.size / 1024} KB" else "none"})")
+        } finally { tagged.delete(); plain.delete() }
     }
 
     /**
@@ -63,6 +66,17 @@ object Tagger {
         check(tmp.length() > file.length() - 10) { "tag write produced a short file" }
         check(tmp.renameTo(file) || (file.delete() && tmp.renameTo(file))) { "could not replace ${file.name} with the tagged copy" }
         DebugLog.d("tag", "id3v2 written (${tag.size / 1024} KB, cover ${if (cover != null) "${cover.size / 1024} KB" else "none"})")
+    }
+
+    /** Duration and audio presence via the platform extractor: (ok, detail). */
+    fun probe(file: File): Pair<Boolean, String> {
+        val mmr = android.media.MediaMetadataRetriever()
+        return try {
+            mmr.setDataSource(file.absolutePath)
+            val d = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val audio = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+            (d > 1_000 && audio) to "duration=${d}ms audio=$audio"
+        } catch (e: Exception) { false to (e.message ?: e.toString()) } finally { runCatching { mmr.release() } }
     }
 
     /** Reads the tags back the way MediaStore will, so the log says whether the cover actually made it. */
