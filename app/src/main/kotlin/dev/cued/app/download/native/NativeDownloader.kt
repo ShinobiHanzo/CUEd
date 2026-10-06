@@ -182,6 +182,48 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         } finally { tmp.delete(); mp3?.delete(); aac?.delete() }
     }
 
+    /**
+     * Station listening: fetch one entry into [base] (extension added) without
+     * touching the library. Same source resolution as [download], no
+     * transcoding; covers and basic tags are written when the file allows it.
+     */
+    suspend fun fetchTemp(t: dev.cued.core.station.StationTrack, base: File, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+        val source = t.source
+        val link = SourceLinks.parse(source)
+        val ytUrl: String = when {
+            link != null && link.platform == Platform.SPOTIFY && link.type == LinkType.TRACK && link.id != null -> {
+                val meta = runCatching { spotify.track(link.id!!) }.getOrNull()
+                (meta?.let { findOnYouTube(it) }) ?: searchBest("${t.artist} ${t.title}")
+            }
+            link != null && (link.platform == Platform.YOUTUBE || link.platform == Platform.YOUTUBE_MUSIC) -> link.url
+            else -> searchBest(if (link != null) "${t.artist} ${t.title}" else source)
+        }
+        onProgress(0.05f)
+        val (info, stream) = youtube.info(ytUrl, preferM4a = true)
+        val ext = youtube.extensionOf(stream)
+        val file = File(base.parentFile, base.name + "." + ext)
+        youtube.download(stream, file) { p -> onProgress(0.05f + 0.85f * p) }
+        if (ext == "m4a" && dev.cued.core.tag.Mp4Tags.isFragmented(file)) {
+            val plain = File(file.parentFile, file.nameWithoutExtension + ".plain.m4a")
+            dev.cued.app.tagging.Remux.toPlainMp4(file, plain)
+            file.delete(); plain.renameTo(file)
+        }
+        if (ext == "m4a" || ext == "mp3") runCatching {
+            val videoId = SourceLinks.parse(ytUrl)?.id ?: ytUrl.substringAfter("v=").substringBefore('&')
+            val cover = CoverFinder.fetchFirst(listOfNotNull(t.cover) + CoverFinder.youtubeCandidates(videoId))
+            Tagger.write(file, Tagger.Meta(title = t.title, artists = listOf(t.artist), album = t.album.ifBlank { null }, albumArtist = null, trackNumber = null, year = null, genres = emptyList(), coverUrl = null, cover = cover, lyrics = null, comment = t.link))
+        }.onFailure { DebugLog.w(TAG, "station tag failed (file kept)", it) }
+        onProgress(1f)
+        DebugLog.d(TAG, "station fetch: ${info.name} -> ${file.name} (${file.length()} bytes)")
+        file
+    }
+
+    private fun searchBest(q: String): String {
+        val cands = youtube.search(q)
+        val best = Matcher.best(Matcher.Wanted(q, emptyList(), null), cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull()
+        return best?.id ?: error("Nothing found on YouTube Music for \"$q\"")
+    }
+
     /** Quick health check: search + stream probe, no download. */
     suspend fun selfTest(): String = withContext(Dispatchers.IO) {
         val out = StringBuilder()

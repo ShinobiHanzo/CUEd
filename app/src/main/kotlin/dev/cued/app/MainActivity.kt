@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
             }
             Intent.ACTION_VIEW, android.nfc.NfcAdapter.ACTION_NDEF_DISCOVERED -> {
                 val text = intent.dataString ?: return
+                if (dev.cued.core.station.StationLink.decode(text) != null) { inbound.value = Inbound.Follow(text); return }
                 val payload = SharePayload.decode(text)
                 if (payload != null) inbound.value = Inbound.Share(payload)
                 else if (SourceLinks.parse(text) != null) inbound.value = Inbound.Download(text) // a music link opened with CUEd
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 val text = listOfNotNull(intent.getStringExtra(Intent.EXTRA_TEXT), intent.getStringExtra(Intent.EXTRA_SUBJECT)).joinToString("\n").trim()
                 if (text.isEmpty()) return
+                text.lines().map { it.trim() }.firstOrNull { dev.cued.core.station.StationLink.decode(it) != null }?.let { inbound.value = Inbound.Follow(it); return }
                 val payload = text.lines().firstNotNullOfOrNull { SharePayload.decode(it.trim()) }
                 if (payload != null) inbound.value = Inbound.Share(payload)
                 else if (SourceLinks.parse(text) != null || SourceLinks.shareTextToQuery(text) != null) inbound.value = Inbound.Download(text)

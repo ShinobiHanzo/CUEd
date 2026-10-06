@@ -71,6 +71,8 @@ class Graph(val app: Application) {
     val genres: GenreRepository by lazy { GenreRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val updates: UpdateManager by lazy { UpdateManager(app, settings, appScope) }
     val bugs: BugReporter by lazy { BugReporter(app, settings, appScope) }
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val station: dev.cued.app.station.StationService by lazy { dev.cued.app.station.StationService(this) }
 
     init {
         // New or previously unlabelled files get their tag genres read after each scan.

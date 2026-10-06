@@ -64,6 +64,13 @@ import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
 import dev.cued.app.ui.components.MiniPlayer
 import dev.cued.app.ui.components.ReceivedSplash
+import dev.cued.app.ui.screens.StationScreen
+import dev.cued.app.ui.screens.FollowingScreen
+import dev.cued.app.ui.screens.ListenScreen
+import dev.cued.app.ui.theme.Teal
+import dev.cued.core.station.Station
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Groups
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
@@ -90,6 +97,8 @@ import kotlinx.coroutines.launch
 sealed class Inbound {
     data class Share(val payload: SharePayload) : Inbound()
     data class Download(val source: String) : Inbound()
+    /** A cued://station link (QR, NFC tap, message): follow it. */
+    data class Follow(val text: String) : Inbound()
     data object NowPlaying : Inbound()
     /** Assistant "play <query>": empty query means "play something". */
     data class VoicePlay(val query: String) : Inbound()
@@ -118,6 +127,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val pvm: PlayerViewModel = viewModel(factory = factory)
     val dvm: DownloadViewModel = viewModel(factory = factory)
     val svm: ShareViewModel = viewModel(factory = factory)
+    val stvm: StationViewModel = viewModel(factory = factory)
     val setvm: SettingsViewModel = viewModel(factory = factory)
 
     val nav = rememberNavController()
@@ -188,6 +198,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     LaunchedEffect(incoming) {
         when (val i = incoming) {
             is Inbound.Share -> svm.receive(i.payload) // the ReceivedSplash below is the feedback
+            is Inbound.Follow -> { stvm.follow(i.text) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
             is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }
             Inbound.NowPlaying -> nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true }
             is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
@@ -203,6 +214,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val showChrome = route != Route.NOW_PLAYING
     val rootTitle = Route.topBarTitles[route]
     val activeDownloads by dvm.activeCount.collectAsState()
+    val stationOnAir by stvm.onAir.collectAsState()
+    val liveStations by stvm.live.collectAsState()
+    val tunedStation by stvm.tuned.collectAsState()
     androidx.compose.runtime.DisposableEffect(Unit) { pvm.uiVisible.value = true; onDispose { pvm.uiVisible.value = false } }
 
     if (carMode) {
@@ -239,6 +253,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     onClick = { scope.launch { drawer.close() }; nav.navigate("longplays") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("receive") })
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(label = { Text(if (stationOnAir) "Your station · on air" else "Start a Station") }, selected = route == "station", icon = { Icon(Icons.Default.Radio, null, tint = if (stationOnAir) Teal else androidx.compose.material3.LocalContentColor.current) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("station") { launchSingleTop = true } })
+                NavigationDrawerItem(label = { Text("Following") }, selected = route == "following", icon = { Icon(Icons.Default.Groups, null) },
+                    badge = { val n = liveStations.values.count { it.status == Station.STATUS_ON_AIR }; if (n > 0) Text("$n on air", color = Teal) else if (tunedStation != null) Text("listening", color = Teal) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("following") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Rescan library") }, selected = false, icon = { Icon(Icons.Default.Refresh, null) },
                     onClick = { scope.launch { drawer.close() }; lvm.rescan() })
                 NavigationDrawerItem(label = { Text("Analyse all tracks") }, selected = false, icon = { Icon(Icons.Default.GraphicEq, null) },
@@ -381,7 +401,17 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     LongPlaysScreen(lvm, player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more)
                 }
                 composable("receive") {
-                    ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { nav.popBackStack() }) // the ReceivedSplash shows what came in
+                    ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { nav.popBackStack() }, // the ReceivedSplash shows what came in
+                        onStation = { link -> stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.popBackStack(); nav.navigate("following") { launchSingleTop = true } })
+                }
+                composable("station") { StationScreen(stvm, onBack = { nav.popBackStack() }) }
+                composable("following") {
+                    FollowingScreen(stvm, onBack = { nav.popBackStack() }, onOpen = { nav.navigate("listen/${it.pubkey}") }, onScan = { nav.navigate("receive") },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
+                }
+                composable("listen/{pub}") { e ->
+                    ListenScreen(stvm, e.arguments?.getString("pub").orEmpty(), onBack = { nav.popBackStack() }, onOpenPlayer = { nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
             }
         }

@@ -72,6 +72,7 @@ class CuedVmFactory(private val graph: Graph) : ViewModelProvider.Factory {
         modelClass.isAssignableFrom(DownloadViewModel::class.java) -> DownloadViewModel(graph) as T
         modelClass.isAssignableFrom(ShareViewModel::class.java) -> ShareViewModel(graph) as T
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(graph) as T
+        modelClass.isAssignableFrom(StationViewModel::class.java) -> StationViewModel(graph) as T
         else -> error("Unknown ViewModel $modelClass")
     }
 }

@@ -55,6 +55,8 @@ data class TrackEntity(
     companion object {
         const val KIND_MUSIC = "music"
         const val KIND_LONG = "long"
+        /** Temporary file fetched for a station you are listening to; lives in the cache, hidden from the library until kept. */
+        const val KIND_STATION = "station"
         /** Anything longer than this is treated as a podcast / audiobook / mix, not a song. */
         const val LONG_THRESHOLD_MS = 12L * 60_000L
     }

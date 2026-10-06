@@ -147,7 +147,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit) {
+fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit, onStation: (String) -> Unit = {}) {
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycle = LocalLifecycleOwner.current
@@ -161,6 +161,7 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
 
     fun handle(text: String) {
         if (handled) return
+        if (dev.cued.core.station.StationLink.decode(text) != null || dev.cued.core.crypto.Nip19.parse(text)?.first == "npub") { handled = true; onStation(text.trim()); return }
         val p = SharePayload.decode(text)
         if (p == null) { status = "Not a CUEd share code"; return }
         handled = true
@@ -211,7 +212,7 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
                 OutlinedButton(onClick = { scanning = false; runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() } }, modifier = Modifier.padding(top = 8.dp)) { Text("Stop the camera") }
             }
             Spacer(Modifier.height(24.dp))
-            Text("Pasted link", style = MaterialTheme.typography.titleMedium)
+            Text("Pasted link (a share, or a station link / npub to follow)", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(value = pasted, onValueChange = { pasted = it }, singleLine = true, placeholder = { Text("cued://share?... or https://shinobihanzo.github.io/CUEd/#...") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             OutlinedButton(onClick = { handle(pasted.trim()) }, enabled = pasted.isNotBlank(), modifier = Modifier.padding(top = 6.dp)) { Text("Use this link") }
             status?.let { Text(it, color = if (handled) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp)) }

@@ -331,7 +331,7 @@ class LibraryRepository(
                     }
                 }
             }
-            for (t in existing.values) if (t.mediaStoreId !in seen && !t.missing) db.tracks().setMissing(t.id, true)
+            for (t in existing.values) if (t.mediaStoreId !in seen && !t.missing && t.kind != TrackEntity.KIND_STATION) db.tracks().setMissing(t.id, true)
             } // transaction
         } finally {
             _scanning.value = false

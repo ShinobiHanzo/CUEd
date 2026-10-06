@@ -121,6 +121,7 @@ dependencies {
 
     implementation(libs.zxing.core)
     implementation(libs.nanohttpd)
+    implementation(libs.okhttp) // relay WebSockets for stations
     implementation(libs.coil.compose)
 
     // Built-in downloader: YouTube extraction + tagging, no Python needed.
