@@ -55,6 +55,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.cued.app.share.QrCodes
 import dev.cued.app.share.nfc.NfcReader
+import dev.cued.app.share.nfc.TagEmulationSession
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import dev.cued.app.ui.ShareViewModel
 import dev.cued.app.ui.theme.Muted
 import dev.cued.app.ui.theme.Teal
@@ -68,11 +71,26 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycle = LocalLifecycleOwner.current
     var nfcStatus by remember { mutableStateOf<String?>(null) }
+    var nfcProblem by remember { mutableStateOf<String?>(null) }
     val nfc = remember(activity) { activity?.let { NfcReader(it) } }
+    val tag = remember(activity) { activity?.let { TagEmulationSession(it) } }
 
     LaunchedEffect(trackId) { vm.startSharing(trackId) }
     DisposableEffect(Unit) { onDispose { vm.stopSharing(); nfc?.stopReading() } }
+    // Hold the NFC slot only while this screen is actually in front.
+    DisposableEffect(lifecycle, tag) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> { tag?.start(); nfcProblem = tag?.problem }
+                Lifecycle.Event.ON_PAUSE -> tag?.stop()
+                else -> {}
+            }
+        }
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose { lifecycle.lifecycle.removeObserver(observer); tag?.stop() }
+    }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Share") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } })
@@ -101,11 +119,13 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
                     else -> "NFC ready: hold the phones back-to-back. The other phone only needs its screen on; it reads this one like a tag and opens the share in CUEd (or the download page if CUEd is not installed)."
                 }, style = MaterialTheme.typography.bodySmall, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center,
             )
+            nfcProblem?.let { Text("NFC note: $it. If the phone asks which NFC service to use, pick CUEd.", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
             if (nfc?.enabled == true) {
                 OutlinedButton(onClick = {
                     val p = state.payload ?: return@OutlinedButton
                     nfcStatus = "Tap a blank NFC tag to write it…"
-                    nfc.startWriting(p) { r -> nfcStatus = r.fold({ "Tag written" }, { "Write failed: ${it.message}" }); nfc.stopReading() }
+                    tag?.stop() // writing needs reader mode, which suspends card emulation
+                    nfc.startWriting(p) { r -> nfcStatus = r.fold({ "Tag written" }, { "Write failed: ${it.message}" }); nfc.stopReading(); tag?.start() }
                 }, modifier = Modifier.padding(top = 8.dp)) { Text("Write to an NFC sticker instead") }
                 nfcStatus?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
             }

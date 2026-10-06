@@ -37,6 +37,7 @@ class CuedApp : Application() {
         dev.cued.app.util.DebugLog.init(this, BuildConfig.VERSION_NAME)
         graph.settings.debugLog.onEach { dev.cued.app.util.DebugLog.enabled = it }.launchIn(graph.appScope)
         createNotificationChannels()
+        dev.cued.app.share.nfc.TagEmulationSession.release(this)
     }
 
     private fun createNotificationChannels() {

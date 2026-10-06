@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Host card emulation: while the Share screen is open this phone is an NFC
      Forum Type 4 tag (NDEF AID D2760000850101) holding the share URL, so any
-     phone's stock NFC reader picks it up. The F0 AID is the older CUEd-only
-     protocol, kept for receivers on previous versions. -->
+     phone's stock NFC reader picks it up. That standard AID is also used by
+     wallets and Nearby, so it is claimed dynamically only while sharing
+     (TagEmulationSession); statically CUEd owns just its own F0 AID, the
+     older CUEd-only protocol kept for receivers on previous versions. -->
 <host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/nfc_service_description"
     android:requireDeviceUnlock="false">
     <aid-group android:category="other" android:description="@string/nfc_service_description">
-        <aid-filter android:name="D2760000850101" />
         <aid-filter android:name="F043554544" />
     </aid-group>
 </host-apdu-service>
