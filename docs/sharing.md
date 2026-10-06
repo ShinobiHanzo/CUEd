@@ -12,7 +12,8 @@ https://shinobihanzo.github.io/CUEd/#v=1&t=...        (same fields; what QR and 
   while its Share screen is open (only the tracks being shared are served; nothing else is
   browsable).
 - `k` is `http://<sender-ip>:8765/apk`: the receiving phone can install CUEd from the
-  sender, no store needed. Opening `http://<sender-ip>:8765/` in any browser shows a plain
+  sender, no store needed. Only present when "Include a link to install CUEd" is switched
+  on; it is off by default. Opening `http://<sender-ip>:8765/` in any browser shows a plain
   page with the same links for phones that don't have the app yet.
 
 ## Channels

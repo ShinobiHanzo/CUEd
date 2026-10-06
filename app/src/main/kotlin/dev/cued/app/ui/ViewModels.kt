@@ -328,7 +328,7 @@ data class ShareUiState(
     val payload: String? = null,
     val qr: Bitmap? = null,
     val includeFile: Boolean = true,
-    val includeApk: Boolean = true,
+    val includeApk: Boolean = false, // off by default: the share carries only the track unless asked
     val error: String? = null,
 )
 
