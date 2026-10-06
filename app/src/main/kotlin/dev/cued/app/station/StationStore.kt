@@ -44,8 +44,18 @@ class StationStore(private val context: Context) {
         val relays = stringPreferencesKey("relays_json")
         val prefetchMobile = booleanPreferencesKey("prefetch_on_mobile")
         val cacheMb = intPreferencesKey("cache_mb")
+        val enabled = booleanPreferencesKey("beta_enabled")
+        val setupDone = booleanPreferencesKey("setup_done")
     }
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** Stations is a beta feature: off until a person turns it on in Settings and walks through the setup. */
+    val enabled: Flow<Boolean> = context.stationStore.data.map { it[K.enabled] ?: false }
+    val setupDone: Flow<Boolean> = context.stationStore.data.map { it[K.setupDone] ?: false }
+    suspend fun setEnabled(on: Boolean) = context.stationStore.edit { it[K.enabled] = on }
+    suspend fun setSetupDone(done: Boolean) = context.stationStore.edit { it[K.setupDone] = done }
+    /** Deletes the key pair, follows, name and every station setting. */
+    suspend fun reset() = context.stationStore.edit { it.clear() }
 
     val identity: Flow<Identity?> = context.stationStore.data.map { p -> p[K.secret]?.let { Identity(it, Secp256k1.publicKey(it.hexToBytes()).toHex()) } }
     val name: Flow<String> = context.stationStore.data.map { it[K.name].orEmpty() }

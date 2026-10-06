@@ -67,6 +67,7 @@ import dev.cued.app.ui.components.ReceivedSplash
 import dev.cued.app.ui.screens.StationScreen
 import dev.cued.app.ui.screens.FollowingScreen
 import dev.cued.app.ui.screens.ListenScreen
+import dev.cued.app.ui.screens.StationSetupScreen
 import dev.cued.app.ui.theme.Teal
 import dev.cued.core.station.Station
 import androidx.compose.material.icons.filled.Radio
@@ -198,7 +199,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     LaunchedEffect(incoming) {
         when (val i = incoming) {
             is Inbound.Share -> svm.receive(i.payload) // the ReceivedSplash below is the feedback
-            is Inbound.Follow -> { stvm.follow(i.text) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
+            is Inbound.Follow -> if (stvm.ready.value) { stvm.follow(i.text) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
+                else { pendingFollow = i.text; snackbar.showSnackbar("Stations is a beta feature: set it up first, then this link is followed"); nav.navigate("station/setup") { launchSingleTop = true } }
             is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }
             Inbound.NowPlaying -> nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true }
             is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
@@ -215,6 +217,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val rootTitle = Route.topBarTitles[route]
     val activeDownloads by dvm.activeCount.collectAsState()
     val stationOnAir by stvm.onAir.collectAsState()
+    val stationsEnabled by stvm.enabled.collectAsState()
+    val stationsReady by stvm.ready.collectAsState()
+    var pendingFollow by remember { mutableStateOf<String?>(null) }
     val liveStations by stvm.live.collectAsState()
     val tunedStation by stvm.tuned.collectAsState()
     androidx.compose.runtime.DisposableEffect(Unit) { pvm.uiVisible.value = true; onDispose { pvm.uiVisible.value = false } }
@@ -253,10 +258,10 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     onClick = { scope.launch { drawer.close() }; nav.navigate("longplays") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("receive") })
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                NavigationDrawerItem(label = { Text(if (stationOnAir) "Your station · on air" else "Start a Station") }, selected = route == "station", icon = { Icon(Icons.Default.Radio, null, tint = if (stationOnAir) Teal else androidx.compose.material3.LocalContentColor.current) },
+                if (stationsEnabled) HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                if (stationsEnabled) NavigationDrawerItem(label = { Text(if (stationOnAir) "Your station · on air" else "Start a Station") }, selected = route == "station", icon = { Icon(Icons.Default.Radio, null, tint = if (stationOnAir) Teal else androidx.compose.material3.LocalContentColor.current) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("station") { launchSingleTop = true } })
-                NavigationDrawerItem(label = { Text("Following") }, selected = route == "following", icon = { Icon(Icons.Default.Groups, null) },
+                if (stationsEnabled) NavigationDrawerItem(label = { Text("Following") }, selected = route == "following", icon = { Icon(Icons.Default.Groups, null) },
                     badge = { val n = liveStations.values.count { it.status == Station.STATUS_ON_AIR }; if (n > 0) Text("$n on air", color = Teal) else if (tunedStation != null) Text("listening", color = Teal) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("following") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Rescan library") }, selected = false, icon = { Icon(Icons.Default.Refresh, null) },
@@ -354,7 +359,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 composable(Route.DOWNLOADS) {
                     DownloadsScreen(dvm, initialSource = pendingDownload, onSourceConsumed = { pendingDownload = null })
                 }
-                composable(Route.SETTINGS) { SettingsScreen(setvm, onOpenReceive = { nav.navigate("receive") }) }
+                composable(Route.SETTINGS) { SettingsScreen(setvm, stvm, onOpenReceive = { nav.navigate("receive") }, onStationSetup = { nav.navigate("station/setup") { launchSingleTop = true } }) }
 
                 composable(Route.NOW_PLAYING) { NowPlayingScreen(pvm, lvm, onClose = { nav.popBackStack() }, onMore = { id -> scope.launch { graph.library.track(id)?.let { sheetTrack = it } } }) }
                 composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
@@ -402,15 +407,30 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 }
                 composable("receive") {
                     ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { nav.popBackStack() }, // the ReceivedSplash shows what came in
-                        onStation = { link -> stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.popBackStack(); nav.navigate("following") { launchSingleTop = true } })
+                        onStation = { link ->
+                            nav.popBackStack()
+                            if (stvm.ready.value) { stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
+                            else { pendingFollow = link; nav.navigate("station/setup") { launchSingleTop = true } }
+                        })
                 }
-                composable("station") { StationScreen(stvm, onBack = { nav.popBackStack() }) }
+                composable("station/setup") {
+                    StationSetupScreen(stvm, onBack = { nav.popBackStack() }, onDone = {
+                        nav.popBackStack()
+                        val link = pendingFollow; pendingFollow = null
+                        if (link != null) { stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
+                        else nav.navigate("station") { launchSingleTop = true }
+                    })
+                }
+                // Every station screen sits behind the beta switch and its setup.
+                composable("station") { if (!stationsReady) StationSetupScreen(stvm, onBack = { nav.popBackStack() }, onDone = {}) else StationScreen(stvm, onBack = { nav.popBackStack() }) }
                 composable("following") {
-                    FollowingScreen(stvm, onBack = { nav.popBackStack() }, onOpen = { nav.navigate("listen/${it.pubkey}") }, onScan = { nav.navigate("receive") },
+                    if (!stationsReady) StationSetupScreen(stvm, onBack = { nav.popBackStack() }, onDone = {})
+                    else FollowingScreen(stvm, onBack = { nav.popBackStack() }, onOpen = { nav.navigate("listen/${it.pubkey}") }, onScan = { nav.navigate("receive") },
                         onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
                 composable("listen/{pub}") { e ->
-                    ListenScreen(stvm, e.arguments?.getString("pub").orEmpty(), onBack = { nav.popBackStack() }, onOpenPlayer = { nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+                    if (!stationsReady) StationSetupScreen(stvm, onBack = { nav.popBackStack() }, onDone = {})
+                    else ListenScreen(stvm, e.arguments?.getString("pub").orEmpty(), onBack = { nav.popBackStack() }, onOpenPlayer = { nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
                         onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
             }

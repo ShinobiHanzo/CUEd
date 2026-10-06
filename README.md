@@ -31,7 +31,7 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Playlists | Create, rename, reorder, save any smart list or genre or "more like this" as a playlist | `ui/screens/PlaylistsScreen.kt` |
 | Downloads | **Built-in** (default, no setup): Spotify/YouTube metadata → YouTube Music match → AAC download → tagged m4a, all in Kotlin. Or `spotdl` via **Termux** on the phone or the **companion server** over LAN. Links from any platform, playlists expanded, share-sheet integration | `app/.../download`, `core/.../download/Matcher.kt`, `tools/spotdl-server` |
 | Sharing | QR code + NFC (host-card emulation, phone-to-phone, plus NDEF stickers) carrying a `cued://share?…` payload with the source link, a local file URL and an APK URL. Local HTTP server serves the track and the app itself | `app/.../share`, `core/.../share/SharePayload.kt` |
-| Stations | *Start a Station* broadcasts what you play (metadata only, signed by a key made on the phone) over Nostr relays; followers tune in from anywhere, their phones fetch each track themselves and play it at the host's position. Following page, QR/NFC follow links, temporary cache with Keep | `app/.../station`, `core/.../station`, `core/.../crypto` |
+| Stations (beta, off by default) | After Settings → Beta features → setup, *Start a Station* broadcasts what you play (metadata only, signed by a key made on the phone) over Nostr relays; followers tune in from anywhere, their phones fetch each track themselves and play it at the host's position. Following page, QR/NFC follow links, temporary cache with Keep | `app/.../station`, `core/.../station`, `core/.../crypto` |
 
 ## Get the app
 

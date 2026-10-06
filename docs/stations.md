@@ -4,6 +4,17 @@ A station is a person broadcasting *what they are playing*, not the audio.
 Followers anywhere in the world hear the same track at the same position,
 each from a copy on their own phone. Nothing here needs an account.
 
+**Beta, off by default.** Nothing station-related appears in the app until
+Settings → Beta features → Stations is switched on, and the switch itself
+leads through a setup (what the feature does and what leaves the phone, the
+key pair with a backup step, a station name, relays with a reachability
+test, listening defaults). Only when the setup is finished do *Start a
+Station* and *Following* show up in the side menu and `cued://station`
+links get followed; a link that arrives earlier is held and followed once
+setup completes. Turning the switch off stops broadcasting, leaves any
+station and closes the relays; the key and follows are kept until *Reset
+Stations* deletes them.
+
 ## How it works
 
 | Piece | What it does |

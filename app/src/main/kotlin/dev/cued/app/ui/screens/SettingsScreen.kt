@@ -41,7 +41,8 @@ import dev.cued.app.ui.theme.Muted
 import dev.cued.core.mix.CrossfadeCurve
 
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel, onOpenReceive: () -> Unit, onStationSetup: () -> Unit) {
     val context = LocalContext.current
     val pb by vm.playback.collectAsState()
     val ui by vm.ui.collectAsState()
@@ -138,6 +139,9 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("Receive a share", "Scan a CUEd QR or tap phones")
         TextButton(onClick = onOpenReceive, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Open receiver") }
 
+        SectionHeader("Beta features", "Off by default. Each one needs a short setup before it appears in the side menu.")
+        BetaBlock(stvm, onStationSetup)
+
         SectionHeader("Lock screen and widgets", "CUEd's own player above the keyguard, and a resizable home-screen widget")
         LockScreenBlock(vm)
 
@@ -157,6 +161,28 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenReceive: () -> Unit) {
         SectionHeader("About", "CUEd: offline music player with spectrograph, crossfade and local sharing. No accounts, no telemetry, no models: every recommendation is a rule you can read in the source.")
         Spacer(Modifier.height(96.dp))
     }
+}
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun BetaBlock(stvm: dev.cued.app.ui.StationViewModel, onStationSetup: () -> Unit) {
+    val enabled by stvm.enabled.collectAsState()
+    val setupDone by stvm.setupDone.collectAsState()
+    val identity by stvm.identity.collectAsState()
+    var confirmReset by remember { mutableStateOf(false) }
+    ToggleRow(
+        "Stations", "Broadcast what you play to followers anywhere (metadata only, signed by a key made on this phone, carried by relays). Listen along to theirs.",
+        enabled,
+    ) { on -> if (on && !setupDone) onStationSetup() else stvm.setEnabled(on) }
+    if (enabled && !setupDone) TextButton(onClick = onStationSetup, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Finish the station setup") }
+    if (identity != null || setupDone) TextButton(onClick = { confirmReset = true }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Reset Stations (delete key, follows, cache)") }
+    if (confirmReset) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirmReset = false },
+        title = { Text("Reset Stations?") },
+        text = { Text("Your key pair, follows and station settings on this phone are deleted and the cache is cleared. Followers will no longer find you under this key.") },
+        confirmButton = { TextButton(onClick = { stvm.reset(); confirmReset = false }) { Text("Reset") } },
+        dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+    )
 }
 
 @Composable

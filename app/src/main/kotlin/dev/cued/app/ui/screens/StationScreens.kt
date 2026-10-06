@@ -336,3 +336,105 @@ fun ListenScreen(vm: StationViewModel, pubkey: String, onBack: () -> Unit, onOpe
         }
     }
 }
+
+
+/**
+ * The one-time setup behind the beta switch: what the feature does and what
+ * leaves the phone, the key pair, a name, relays with a reachability check,
+ * and the listening defaults. Finishing it is what turns Stations on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
+@Composable
+fun StationSetupScreen(vm: StationViewModel, onBack: () -> Unit, onDone: () -> Unit) {
+    val identity by vm.identity.collectAsState()
+    val name by vm.name.collectAsState()
+    val relays by vm.relays.collectAsState()
+    val prefetchMobile by vm.prefetchOnMobile.collectAsState()
+    val cacheMb by vm.cacheMb.collectAsState()
+    val clipboard = LocalClipboardManager.current
+    var step by remember { mutableStateOf(0) }
+    var nameDraft by remember(name) { mutableStateOf(name) }
+    var importDraft by remember { mutableStateOf("") }
+    var importMsg by remember { mutableStateOf<String?>(null) }
+    var relayDraft by remember(relays) { mutableStateOf(relays.joinToString("\n")) }
+    var relayResult by remember { mutableStateOf<Map<String, Boolean>?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    val steps = listOf("What it is", "Your key", "Name", "Relays", "Listening", "Done")
+
+    Scaffold(topBar = {
+        TopAppBar(title = { Text("Stations (beta) · ${step + 1}/${steps.size}") }, navigationIcon = { IconButton(onClick = { if (step > 0) step-- else onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } })
+    }) { pad ->
+        Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+            LinearProgressIndicator(progress = { (step + 1f) / steps.size }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(16.dp))
+            Text(steps[step], style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(10.dp))
+            when (step) {
+                0 -> {
+                    Text("A station broadcasts what you are playing, so people who follow you can listen along from anywhere. Only metadata goes out: title, artist, album, the source link and the next three tracks in your queue. Never the audio. Each listener's phone fetches its own copy and plays it at your position.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Messages travel through relays: public, free, account-less mailboxes (or your own). Everything is signed by a key made on this phone, so nothing can be forged, and the relays only ever see what you choose to broadcast. Who you follow stays on this phone.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                    Text("This is a beta. Expect rough edges and report them from the side menu.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                1 -> {
+                    if (identity == null) {
+                        Text("Your station needs a key pair. The public half is your address; the secret half never leaves this phone unless you export it to move to another one.", style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = vm::createIdentity, modifier = Modifier.padding(top = 12.dp)) { Text("Create a new key") }
+                        Text("Already have one from another phone?", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 16.dp))
+                        OutlinedTextField(importDraft, onValueChange = { importDraft = it }, label = { Text("Paste nsec… or hex") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                        TextButton(onClick = { vm.importSecret(importDraft) { importMsg = it } }, enabled = importDraft.isNotBlank()) { Text("Import") }
+                        importMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Muted) }
+                    } else identity?.let { id ->
+                        Text("Your key is ready.", style = MaterialTheme.typography.bodyMedium, color = Teal)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                            Text("Public: ${id.npub}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { clipboard.setText(AnnotatedString(id.npub)) }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy") }
+                        }
+                        Text("Back it up now if you care about keeping this identity: copy the secret key somewhere safe. Without it, a lost phone means a new station and followers have to re-add you.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(id.nsec)) }) { Text("Copy the secret key") }
+                    }
+                }
+                2 -> {
+                    Text("What followers see on their Following page.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(nameDraft, onValueChange = { nameDraft = it; vm.setName(it) }, label = { Text("Station name") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                }
+                3 -> {
+                    Text("Relays carry the signed states between phones. The defaults are public and free; replace any of them with your own wss:// URL, one per line.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(relayDraft, onValueChange = { relayDraft = it; relayResult = null }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), minLines = 3)
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.setRelays(relayDraft); testing = true; vm.testRelays { relayResult = it; testing = false } }, enabled = !testing) { Text(if (testing) "Testing…" else "Save and test") }
+                    }
+                    relayResult?.let { r ->
+                        for ((u, ok) in r) Text((if (ok) "● reachable  " else "○ no answer  ") + u, style = MaterialTheme.typography.bodySmall, color = if (ok) Teal else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                        if (r.values.none { it }) Text("None answered. Check the connection or the URLs; you can still continue and fix this later in Your station.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+                4 -> {
+                    Text("When you tune in to someone's station, each track is fetched to a temporary cache as they announce it.", style = MaterialTheme.typography.bodyMedium)
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Fetch on mobile data")
+                            Text("Off means only on Wi-Fi; the station waits otherwise.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        Switch(checked = prefetchMobile, onCheckedChange = vm::setPrefetchOnMobile)
+                    }
+                    Text("Cache size: $cacheMb MB", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+                    Slider(value = cacheMb.toFloat(), onValueChange = { vm.setCacheMb(it.toInt()) }, valueRange = 50f..2000f, steps = 38)
+                    Text("Oldest tracks are dropped first. \"Keep this track\" while listening moves one into your library for good.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                else -> {
+                    Text("Stations is on.", style = MaterialTheme.typography.bodyMedium, color = Teal)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Side menu → Start a Station to broadcast. Side menu → Following to add people by QR, NFC tap or pasted link and listen along. Turn the whole thing off again under Settings → Beta features; your key and follows are kept unless you reset them there.", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (step < steps.size - 1) Button(onClick = { if (step == 3) vm.setRelays(relayDraft); step++ }, enabled = step != 1 || identity != null) { Text(if (step == 0) "I understand" else "Next") }
+                else Button(onClick = { vm.finishSetup(); onDone() }) { Text("Finish") }
+            }
+        }
+    }
+}

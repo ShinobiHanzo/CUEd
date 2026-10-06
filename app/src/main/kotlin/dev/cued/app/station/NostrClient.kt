@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -141,5 +143,19 @@ class NostrClient(private val scope: CoroutineScope, private val relayUrls: Flow
         }
     }
 
-    companion object { private const val TAG = "Nostr" }
+    companion object {
+        private const val TAG = "Nostr"
+
+        /** Setup check: can this relay be reached right now? Opens a socket, waits for the handshake, closes it. */
+        suspend fun probe(url: String, timeoutMs: Long = 6_000): Boolean = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                val client = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).build()
+                val ws = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) { if (cont.isActive) cont.resume(true); webSocket.close(1000, "probe") }
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (cont.isActive) cont.resume(false) }
+                })
+                cont.invokeOnCancellation { ws.cancel() }
+            }
+        } ?: false
+    }
 }

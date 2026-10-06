@@ -21,6 +21,10 @@ class StationViewModel(private val graph: Graph) : ViewModel() {
     private val svc = graph.station
     private val store = svc.store
 
+    val enabled: StateFlow<Boolean> = store.enabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val setupDone: StateFlow<Boolean> = store.setupDone.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** Both the beta switch and the one-time setup: the only state in which station screens and follow links work. */
+    val ready: StateFlow<Boolean> = combine(enabled, setupDone) { e, d -> e && d }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val identity: StateFlow<Identity?> = store.identity.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val name: StateFlow<String> = store.name.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val follows: StateFlow<List<Follow>> = store.follows.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -40,6 +44,18 @@ class StationViewModel(private val graph: Graph) : ViewModel() {
     /** What a QR code or NFC tap hands a follower; null until the key pair exists. */
     val stationLink: StateFlow<String?> = combine(identity, name, relays) { id, n, r -> id?.let { StationLink(it.pubkeyHex, n, r).encode() } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun setEnabled(on: Boolean) { viewModelScope.launch { if (!on) svc.shutdown(); store.setEnabled(on) } }
+    fun finishSetup() { viewModelScope.launch { store.setSetupDone(true); store.setEnabled(true) } }
+    /** Forget the key pair, follows and settings; the cache is cleared too. */
+    fun reset() { viewModelScope.launch { svc.shutdown(); svc.cache.clear(); store.reset() } }
+    /** Tries each relay once; [onResult] gets url → reachable. */
+    fun testRelays(onResult: (Map<String, Boolean>) -> Unit) {
+        viewModelScope.launch {
+            val urls = relays.value.ifEmpty { dev.cued.app.station.StationStore.DEFAULT_RELAYS }
+            onResult(urls.associateWith { dev.cued.app.station.NostrClient.probe(it) })
+        }
+    }
 
     fun goOnAir() { viewModelScope.launch { store.ensureIdentity(); svc.host.start() } }
     fun goOffAir() { svc.host.stop() }

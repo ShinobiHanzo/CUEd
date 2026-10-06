@@ -56,5 +56,8 @@ class StationService(private val graph: Graph) {
         client.release(USER)
     }
 
+    /** Turning the beta off: stop broadcasting, leave any station, drop the relays. Keys and follows stay unless reset. */
+    fun shutdown() { host.stop(); listener.leave(); _live.value = emptyMap() }
+
     companion object { private const val USER = "following"; private const val SUB = "cued-following" }
 }
