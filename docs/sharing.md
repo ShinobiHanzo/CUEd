@@ -37,3 +37,15 @@ https://shinobihanzo.github.io/CUEd/#v=1&t=...        (same fields; what QR and 
 Nothing is uploaded anywhere. The share server binds to the phone's LAN address only
 while the Share screen is open, and stops the moment you leave it. No analytics, no crash
 reporting, no account.
+
+## What the receiver sees
+
+Every incoming share (tap, QR scan or pasted link) opens a full-screen card
+(`ReceivedSplash`) with the title, artist, cover once it exists, what the share
+contained (audio file, source link, tempo, genres) and a live status: copying
+from the other phone, added to the library, already in the library, queued from
+the source link, or what went wrong. It stays until closed so a person sees the
+transfer land instead of tapping again. The same share arriving again is never
+fetched twice: `ShareViewModel.receive` remembers what it has seen and only adds
+a "tapped again" note to the card. "Copy it again anyway" forces a re-fetch.
+

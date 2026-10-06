@@ -379,27 +379,70 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
     }
 
     /** Receiving side: turn a scanned/tapped payload into a download or a saved link. */
-    fun receive(payload: SharePayload): String {
-        val source = payload.fileUrl ?: payload.link ?: return "Nothing downloadable in this share"
-        if (payload.fileUrl != null) {
-            viewModelScope.launch { LocalFileReceiver(graph).fetch(payload) }
-            return "Fetching ${payload.title} from the other phone…"
+    // ---- receiving ----
+    private val _received = MutableStateFlow<Received?>(null)
+    /** The share most recently handed to this phone, shown full-screen until dismissed. */
+    val received: StateFlow<Received?> = _received
+    private val seen = HashMap<String, Received>()
+
+    /**
+     * Handles an incoming share. The same share arriving again (a second tap, a
+     * re-scanned QR) only re-shows the screen with a "tapped again" note; nothing
+     * is fetched twice. [force] fetches even when the library already has it.
+     */
+    fun receive(payload: SharePayload, force: Boolean = false): String {
+        val key = payload.fileUrl ?: payload.link ?: "${payload.artist}|${payload.title}"
+        val prev = seen[key]
+        if (!force && prev != null && prev.status !is ReceiveStatus.Failed) {
+            val again = prev.copy(repeats = prev.repeats + 1)
+            seen[key] = again; _received.value = again
+            return "Already received ${payload.title}"
         }
-        graph.downloads.enqueue(source, payload.title, payload.artist)
-        return "Queued ${payload.title} for download"
+        fun update(st: ReceiveStatus) { val r = Received(payload, st, prev?.repeats ?: 0); seen[key] = r; _received.value = r }
+        update(if (payload.fileUrl != null) ReceiveStatus.Fetching else if (payload.link != null) ReceiveStatus.Queued else ReceiveStatus.Failed("Nothing downloadable in this share"))
+        viewModelScope.launch {
+            when {
+                payload.fileUrl != null -> {
+                    val dup = if (force) null else graph.db.tracks().byTitleArtist(payload.title, payload.artist)
+                    if (dup != null) { update(ReceiveStatus.AlreadyHave(dup.id)); return@launch }
+                    update(ReceiveStatus.Fetching)
+                    runCatching { LocalFileReceiver(graph).fetch(payload) }
+                        .onSuccess { id -> update(if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it")) }
+                        .onFailure { update(ReceiveStatus.Failed(it.message ?: "Transfer failed")) }
+                }
+                payload.link != null -> { graph.downloads.enqueue(payload.link!!, payload.title, payload.artist); update(ReceiveStatus.Queued) }
+                else -> update(ReceiveStatus.Failed("Nothing downloadable in this share"))
+            }
+        }
+        return if (payload.fileUrl != null) "Fetching ${payload.title} from the other phone…" else "Queued ${payload.title} for download"
     }
+
+    fun dismissReceived() { _received.value = null }
 
     override fun onCleared() { stopSharing() }
 }
 
+sealed class ReceiveStatus {
+    data object Fetching : ReceiveStatus()
+    /** Only a source link came: it went to the download queue. */
+    data object Queued : ReceiveStatus()
+    data class Done(val trackId: Long) : ReceiveStatus()
+    data class AlreadyHave(val trackId: Long) : ReceiveStatus()
+    data class Failed(val reason: String) : ReceiveStatus()
+}
+
+data class Received(val payload: SharePayload, val status: ReceiveStatus, val repeats: Int = 0)
+
 /** Pulls a track file from another phone's share server straight into Music/CUEd. */
 class LocalFileReceiver(private val graph: Graph) {
-    suspend fun fetch(payload: SharePayload) = withContext(Dispatchers.IO) {
-        val url = payload.fileUrl ?: return@withContext
-        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    /** Returns the new library track id, or null if the file landed but the scan did not pick it up. Throws on transfer errors. */
+    suspend fun fetch(payload: SharePayload): Long? = withContext(Dispatchers.IO) {
+        val url = payload.fileUrl ?: error("No file in this share")
+        val conn = try { java.net.URL(url).openConnection() as java.net.HttpURLConnection } catch (e: Exception) { error("Bad file link") }
         conn.connectTimeout = 8_000; conn.readTimeout = 120_000
         try {
-            if (conn.responseCode !in 200..299) return@withContext
+            val code = try { conn.responseCode } catch (e: java.io.IOException) { error("Could not reach the other phone. Both phones need to be on the same Wi-Fi or hotspot, with its Share screen still open.") }
+            if (code !in 200..299) error("The other phone answered $code. Is its Share screen still open?")
             val mime = conn.contentType?.substringBefore(';') ?: "audio/mpeg"
             val ext = when (mime) { "audio/mp4" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg" -> "ogg"; else -> "mp3" }
             val name = "${payload.artist} - ${payload.title}.$ext".replace(Regex("[\\\\/:*?\"<>|]"), "_")
@@ -411,6 +454,7 @@ class LocalFileReceiver(private val graph: Graph) {
                 payload.link?.let { graph.library.setSourceLink(t.id, it) }
                 if (payload.genres.isNotEmpty()) graph.library.setGenresAuto(t.id, payload.genres)
                 if (!t.isLong) graph.analysis.request(t.id)
+                t.id
             }
         } finally { conn.disconnect() }
     }

@@ -63,6 +63,7 @@ import dev.cued.app.Graph
 import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
 import dev.cued.app.ui.components.MiniPlayer
+import dev.cued.app.ui.components.ReceivedSplash
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
@@ -172,10 +173,21 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         }
     }
 
+    val received by svm.received.collectAsState()
+    received?.let { r ->
+        ReceivedSplash(
+            received = r,
+            onPlay = { t -> pvm.play(listOf(t)); svm.dismissReceived(); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+            onOpenDownloads = { svm.dismissReceived(); nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } },
+            onFetchAnyway = { svm.receive(r.payload, force = true) },
+            onDismiss = svm::dismissReceived,
+        )
+    }
+
     val incoming by inbound.collectAsState()
     LaunchedEffect(incoming) {
         when (val i = incoming) {
-            is Inbound.Share -> { snackbar.showSnackbar(svm.receive(i.payload)) }
+            is Inbound.Share -> svm.receive(i.payload) // the ReceivedSplash below is the feedback
             is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }
             Inbound.NowPlaying -> nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true }
             is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
@@ -369,7 +381,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     LongPlaysScreen(lvm, player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more)
                 }
                 composable("receive") {
-                    ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { msg -> scope.launch { snackbar.showSnackbar(msg) }; nav.popBackStack() })
+                    ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { nav.popBackStack() }) // the ReceivedSplash shows what came in
                 }
             }
         }

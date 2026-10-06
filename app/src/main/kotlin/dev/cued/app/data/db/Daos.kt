@@ -65,6 +65,9 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE mediaStoreId = :mediaStoreId")
     suspend fun byMediaStoreId(mediaStoreId: Long): TrackEntity?
 
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND title = :title COLLATE NOCASE AND artist = :artist COLLATE NOCASE LIMIT 1")
+    suspend fun byTitleArtist(title: String, artist: String): TrackEntity?
+
     @Query("SELECT * FROM tracks WHERE addedAt >= :since AND missing = 0")
     suspend fun addedSince(since: Long): List<TrackEntity>
 
