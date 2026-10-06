@@ -5,10 +5,9 @@ import android.os.Bundle
 
 /**
  * Tap-to-share without anything running on the receiving phone: this phone
- * pretends to be a standard NFC Forum Type 4 tag holding one URL record. Any
- * Android phone's stock NFC stack reads it on contact and hands the URL to
- * whatever app claims it: CUEd (via its NDEF intent filter), or the browser
- * and therefore the download page when CUEd is not installed.
+ * pretends to be a standard NFC Forum Type 4 tag holding the share as URL
+ * records (cued:// first, so the receiving phone's NFC stack launches CUEd
+ * directly; see SharePayloadHolder for why the order matters).
  *
  * Protocol (NFC Forum T4T): SELECT the NDEF application, SELECT the
  * capability container (E103) or the NDEF file (E104), READ BINARY.

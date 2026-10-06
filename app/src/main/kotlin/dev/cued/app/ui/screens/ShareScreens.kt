@@ -116,7 +116,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
                 when {
                     nfc == null || !nfc.available -> "This phone has no NFC."
                     !nfc.enabled -> "NFC is off. Turn it on in system settings for tap-to-share."
-                    else -> "NFC ready: hold the phones back-to-back. The other phone only needs its screen on; it reads this one like a tag and opens the share in CUEd (or the download page if CUEd is not installed)."
+                    else -> "NFC ready: hold the phones back-to-back. The other phone needs CUEd installed and its screen on; it reads this one like a tag and opens the share straight in CUEd. No CUEd on that phone yet? Let it scan the QR code instead: that opens the download page."
                 }, style = MaterialTheme.typography.bodySmall, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center,
             )
             nfcProblem?.let { Text("NFC note: $it. If the phone asks which NFC service to use, pick CUEd.", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
