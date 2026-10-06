@@ -170,6 +170,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     }
     dev.cued.app.ui.components.BugReportDialog(graph.bugs)
     var pendingDownload by remember { mutableStateOf<String?>(null) }
+    /** A cued://station link that arrived before the Stations beta was set up; followed once setup finishes. */
+    var pendingFollow by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val carMode by pvm.carMode.collectAsState()
@@ -219,7 +221,6 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val stationOnAir by stvm.onAir.collectAsState()
     val stationsEnabled by stvm.enabled.collectAsState()
     val stationsReady by stvm.ready.collectAsState()
-    var pendingFollow by remember { mutableStateOf<String?>(null) }
     val liveStations by stvm.live.collectAsState()
     val tunedStation by stvm.tuned.collectAsState()
     androidx.compose.runtime.DisposableEffect(Unit) { pvm.uiVisible.value = true; onDispose { pvm.uiVisible.value = false } }
