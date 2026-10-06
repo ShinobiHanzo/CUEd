@@ -224,6 +224,12 @@ interface DownloadJobDao {
     @Query("DELETE FROM download_jobs WHERE status IN ('DONE','FAILED')")
     suspend fun clearFinished()
 
+    @Query("DELETE FROM download_jobs WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("SELECT * FROM download_jobs WHERE status = 'RUNNING'")
+    suspend fun running(): List<DownloadJobEntity>
+
     @Query("UPDATE download_jobs SET artworkUrl = :url WHERE id = :id")
     suspend fun setArtwork(id: Long, url: String?)
 

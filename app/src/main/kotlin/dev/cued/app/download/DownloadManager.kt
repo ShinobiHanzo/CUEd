@@ -33,6 +33,34 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
     private val db get() = graph.db
     private val mutex = Mutex()
     private var pump: Job? = null
+    /** Jobs a worker in this process is actually running; a RUNNING row outside this set is an orphan. */
+    private val activeJobs = java.util.Collections.synchronizedSet(HashSet<Long>())
+
+    init { graph.appScope.launch { recoverOrphans() } }
+
+    /**
+     * Rows left RUNNING by a killed process or by the old progress race have no
+     * worker behind them. If the file already made it into the library, mark the
+     * job done; otherwise queue it again. Termux jobs run outside the process and
+     * report back by broadcast, so they are left alone.
+     */
+    private suspend fun recoverOrphans() {
+        for (j in db.downloads().running()) {
+            if (j.id in activeJobs || j.backend == DownloadBackend.TERMUX.name) continue
+            val already = db.tracks().allIncludingMissing().any { t -> !t.missing && t.sourceLink != null && t.sourceLink == j.source }
+            if (already) {
+                DebugLog.i(TAG, "job #${j.id} was stuck as running but its file is in the library; marking done")
+                db.downloads().finish(j.id, STATUS_DONE, 1f, (j.message?.takeIf { !it.endsWith("…") } ?: "Finished") + " · recovered", System.currentTimeMillis())
+            } else {
+                DebugLog.i(TAG, "job #${j.id} was running with no worker; queuing it again")
+                db.downloads().update(j.copy(status = STATUS_QUEUED, progress = 0f, message = "Resumed after restart", finishedAt = null))
+            }
+        }
+        pump()
+    }
+
+    /** Drops one row whatever its state. A worker still on it finishes into the void. */
+    fun remove(jobId: Long) { graph.appScope.launch { db.downloads().deleteById(jobId) } }
     private val resolver = LinkResolver("CUEd/${dev.cued.app.BuildConfig.VERSION_NAME} (https://github.com/ShinobiHanzo/CUEd)")
 
     val jobs: Flow<List<DownloadJobEntity>> = db.downloads().observeAll()
@@ -92,7 +120,8 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         }
     }
 
-    fun clearFinished() { graph.appScope.launch { db.downloads().clearFinished() } }
+    /** Done and failed rows, plus any "running" row no worker is behind. */
+    fun clearFinished() { graph.appScope.launch { db.downloads().clearFinished(); db.downloads().running().filter { it.id !in activeJobs && it.backend != DownloadBackend.TERMUX.name }.forEach { db.downloads().deleteById(it.id) } } }
 
     fun pump() {
         graph.appScope.launch {
@@ -109,6 +138,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             val settings = graph.settings.downloadNow()
             val backend = runCatching { DownloadBackend.valueOf(job.backend) }.getOrDefault(settings.backend)
             db.downloads().update(job.copy(status = STATUS_RUNNING, message = "Resolving link…"))
+            activeJobs += job.id
             DebugLog.i(TAG, "job #${job.id} start backend=$backend source=${job.source} hint=${job.title}")
 
             // 1. Turn whatever was shared into something spotdl can take.
@@ -167,12 +197,14 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 Log.w(TAG, "download failed", e)
                 DebugLog.e(TAG, "job #${job.id} failed: ${e.message}", e)
                 db.downloads().finish(job.id, STATUS_FAILED, db.downloads().byId(job.id)?.progress ?: 0f, e.message ?: e.toString(), System.currentTimeMillis())
+                activeJobs -= job.id
             }.onSuccess { outcome ->
                 when (outcome) {
-                    is Outcome.Handed -> db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) }
+                    is Outcome.Handed -> { activeJobs -= job.id; db.downloads().byId(job.id)?.let { db.downloads().update(it.copy(message = "Running in Termux…")) } }
                     is Outcome.Done -> {
                         DebugLog.i(TAG, "job #${job.id} done: ${outcome.summary} ids=${outcome.mediaStoreIds}")
                         db.downloads().finish(job.id, STATUS_DONE, 1f, outcome.summary, System.currentTimeMillis())
+                        activeJobs -= job.id
                         afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId, outcome.metaByMediaStoreId)
                     }
                 }

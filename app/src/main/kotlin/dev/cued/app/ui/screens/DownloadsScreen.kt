@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -183,9 +184,12 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                     headlineContent = { Text(j.title ?: j.source, maxLines = 1) },
                     supportingContent = { Text("${j.backend.lowercase()} · ${j.status.lowercase()}${j.message?.let { " · $it" } ?: ""}", maxLines = 2, color = Muted) },
                     trailingContent = {
-                        if (j.status == DownloadManager.STATUS_FAILED) Row {
-                            TextButton(onClick = { vm.retry(j.id) }) { Text("Retry") }
-                            TextButton(onClick = { bugs.open(dev.cued.app.support.BugReporter.Prefill(title = "Download failed: ${(j.message ?: "unknown error").take(80)}", description = "Source: ${j.source}\nBackend: ${j.backend}\nError: ${j.message}\n\nWhat I expected: ")) }) { Text("Report") }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (j.status == DownloadManager.STATUS_FAILED) {
+                                TextButton(onClick = { vm.retry(j.id) }) { Text("Retry") }
+                                TextButton(onClick = { bugs.open(dev.cued.app.support.BugReporter.Prefill(title = "Download failed: ${(j.message ?: "unknown error").take(80)}", description = "Source: ${j.source}\nBackend: ${j.backend}\nError: ${j.message}\n\nWhat I expected: ")) }) { Text("Report") }
+                            }
+                            IconButton(onClick = { vm.remove(j.id) }) { Icon(Icons.Default.Close, contentDescription = "Remove from list") }
                         }
                     },
                 )

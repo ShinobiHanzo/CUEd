@@ -304,6 +304,7 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
 
     fun enqueue(source: String) = graph.downloads.enqueue(source)
     fun retry(id: Long) = graph.downloads.retry(id)
+    fun remove(id: Long) = graph.downloads.remove(id)
     fun clearFinished() = graph.downloads.clearFinished()
     fun setBackend(b: DownloadBackend) = viewModelScope.launch { graph.settings.setDownloadBackend(b) }
     fun setCompanionUrl(url: String) = viewModelScope.launch { graph.settings.setCompanionUrl(url) }
