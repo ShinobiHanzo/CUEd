@@ -79,6 +79,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="cued" android:host="share" />
             </intent-filter>
+            <!-- Tap-to-share: the other phone's stock NFC reader finds a URL tag pointing at the download page with the share in its fragment -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="shinobihanzo.github.io" android:pathPrefix="/CUEd" />
+            </intent-filter>
             <!-- Music links from streaming platforms can be opened with CUEd to download them -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

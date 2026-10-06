@@ -357,14 +357,16 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             val t = graph.library.track(id) ?: return@launch
             val genres = graph.library.genresOf(id)
             val s = _state.value
-            val payload = SharePayload(
+            val sp = SharePayload(
                 title = t.title, artist = t.artist, link = t.sourceLink,
                 fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
                 apkUrl = if (s.includeApk) graph.shareServer.apkUrl() else null,
                 genres = genres, bpm = t.bpm,
-            ).encode()
+            )
+            // The web form is what leaves the phone: a stock camera or NFC reader lands on the download page, CUEd opens it directly.
+            val payload = sp.encodeWeb()
             val qr = withContext(Dispatchers.Default) { QrCodes.encode(payload, 720, AColor.BLACK, AColor.WHITE) }
-            dev.cued.app.share.nfc.SharePayloadHolder.set(payload)
+            dev.cued.app.share.nfc.SharePayloadHolder.set(payload, legacy = sp.encode())
             _state.value = _state.value.copy(payload = payload, qr = qr)
         }
     }

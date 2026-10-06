@@ -66,4 +66,13 @@ class ShareTest {
         assertEquals("Around the World Daft Punk", SourceLinks.shareTextToQuery("Around the World by Daft Punk"))
         assertNull(SourceLinks.shareTextToQuery("https://only.a/link"))
     }
+
+    @Test fun webFormRoundTrips() {
+        val p = SharePayload(title = "How You Remind Me", artist = "Nickelback", link = "https://open.spotify.com/track/x", genres = listOf("rock"), bpm = 86f)
+        val web = p.encodeWeb()
+        kotlin.test.assertTrue(web.startsWith("https://shinobihanzo.github.io/CUEd/#v="))
+        kotlin.test.assertEquals(p, SharePayload.decode(web))
+        kotlin.test.assertEquals(p, SharePayload.decode(p.encode()))
+        kotlin.test.assertNull(SharePayload.decode("https://shinobihanzo.github.io/CUEd/"))
+    }
 }

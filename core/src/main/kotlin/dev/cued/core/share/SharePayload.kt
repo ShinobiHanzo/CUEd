@@ -26,7 +26,16 @@ data class SharePayload(
     val bpm: Float? = null,
     val version: Int = CuedCore.SHARE_PAYLOAD_VERSION,
 ) {
-    fun encode(): String {
+    fun encode(): String = "${CuedCore.SHARE_SCHEME}://share?" + query()
+
+    /**
+     * Same fields behind the download page's URL. This is what NFC and QR
+     * carry: a phone without CUEd lands on the page (which offers the app and
+     * an "open in CUEd" link), a phone with CUEd gets it straight away.
+     */
+    fun encodeWeb(): String = CuedCore.SHARE_WEB_BASE + "#" + query()
+
+    private fun query(): String {
         val q = LinkedHashMap<String, String>()
         q["v"] = version.toString()
         q["t"] = title
@@ -36,16 +45,22 @@ data class SharePayload(
         apkUrl?.let { q["k"] = it }
         if (genres.isNotEmpty()) q["g"] = genres.joinToString(",")
         bpm?.let { q["b"] = "%.1f".format(java.util.Locale.ROOT, it) }
-        return "${CuedCore.SHARE_SCHEME}://share?" + q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
+        return q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
 
     companion object {
         private const val PREFIX = "${CuedCore.SHARE_SCHEME}://share?"
 
+        /** Accepts `cued://share?…` and the web form `…/CUEd/#…` (or `?…`). */
         fun decode(text: String): SharePayload? {
-            if (!text.startsWith(PREFIX)) return null
+            val t = text.trim()
+            val query = when {
+                t.startsWith(PREFIX) -> t.removePrefix(PREFIX)
+                t.startsWith(CuedCore.SHARE_WEB_BASE, ignoreCase = true) -> t.substring(CuedCore.SHARE_WEB_BASE.length).trimStart('#', '?')
+                else -> return null
+            }
             val q = HashMap<String, String>()
-            for (pair in text.removePrefix(PREFIX).split('&')) {
+            for (pair in query.split('&')) {
                 val i = pair.indexOf('=')
                 if (i <= 0) continue
                 q[pair.substring(0, i)] = dec(pair.substring(i + 1))
