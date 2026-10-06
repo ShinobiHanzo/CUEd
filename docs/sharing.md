@@ -4,6 +4,7 @@ Everything is peer-to-peer. The payload is a short URI:
 
 ```
 cued://share?v=1&t=<title>&a=<artist>&l=<source link>&f=<file url>&k=<apk url>&g=<genres>&b=<bpm>
+https://shinobihanzo.github.io/CUEd/#v=1&t=...        (same fields; what QR and NFC actually carry)
 ```
 
 - `l` is a Spotify/YouTube URL the receiver hands to spotdl.
@@ -19,7 +20,7 @@ cued://share?v=1&t=<title>&a=<artist>&l=<source link>&f=<file url>&k=<apk url>&g
 | Channel | How |
 |---|---|
 | QR | Sender shows the code; receiver scans it in CUEd (camera, zxing, no Play Services) or with any camera app, which opens the `cued://` link if CUEd is installed |
-| NFC phone-to-phone | Sender runs host-card emulation (`CuedHceService`, AID `F043554544`); receiver's Receive screen is in reader mode and reads the payload in 250-byte chunks. Works on Android 10+ where Android Beam no longer exists |
+| NFC phone-to-phone | The sender's Share screen turns the phone into an NFC Forum Type 4 tag (`CuedHceService`, NDEF AID `D2760000850101`) holding the share as a URL. The receiver needs nothing open: Android's stock NFC stack reads it and dispatches `NDEF_DISCOVERED` to CUEd (manifest filter on `shinobihanzo.github.io/CUEd`), or to the browser when CUEd is not installed, which lands on the download page with the share shown. The older CUEd-only AID (`F043554544`) is still answered for receivers on 0.1.21 and earlier. The Receive screen no longer enters reader mode, and its camera stays off until "Scan a QR code" is tapped: an open camera blocks NFC on some phones |
 | NFC sticker | Share screen → "Write to an NFC sticker". Tapping the sticker later opens the `cued://` link |
 | Message | "Send as a message" puts the URI on the share sheet; CUEd registers for the `cued://share` scheme |
 

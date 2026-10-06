@@ -115,6 +115,32 @@
 
   <footer>CUEd is free and open source, under the <a href="https://github.com/ShinobiHanzo/CUEd/blob/HEAD/LICENSE">MIT License</a>.</footer>
 </main>
+<div id="shared" style="display:none;max-width:720px;margin:0 auto;padding:0 20px">
+  <div style="background:var(--ink2);border:1px solid var(--ink3);border-radius:16px;padding:16px;margin-top:8px">
+    <div style="color:var(--muted);font-size:14px">Someone shared a track with you</div>
+    <div id="shared-title" style="font-size:22px;font-weight:800;margin-top:4px"></div>
+    <div id="shared-artist" style="color:var(--body)"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      <a id="shared-open" class="btn" style="width:auto;max-width:none;font-size:16px;padding:12px 18px" href="#">Open in CUEd</a>
+      <a id="shared-link" style="display:none;align-self:center" href="#" target="_blank" rel="noopener">Listen at the source &#8599;</a>
+    </div>
+    <div style="color:var(--muted);font-size:13px;margin-top:10px">No CUEd yet? Install it with the button above, then open this link again. It adds the track to your library.</div>
+  </div>
+</div>
+<script>
+  // A share arrives as "#v=1&t=...&a=...&l=..." in the fragment; nothing is sent anywhere.
+  (function () {
+    var h = location.hash.replace(/^#/, '');
+    if (!/(^|&)t=/.test(h)) return;
+    var q = {}; h.split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, ' ')); });
+    document.getElementById('shared-title').textContent = q.t || '';
+    document.getElementById('shared-artist').textContent = q.a || '';
+    document.getElementById('shared-open').href = 'cued://share?' + h;
+    if (q.l) { var l = document.getElementById('shared-link'); l.href = q.l; l.style.display = 'inline'; }
+    var box = document.getElementById('shared'); box.style.display = 'block';
+    document.querySelector('main').insertBefore(box, document.querySelector('.pics'));
+  })();
+</script>
 <script>
   fetch('https://api.github.com/repos/ShinobiHanzo/CUEd/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
     .then(r => r.ok ? r.json() : null)

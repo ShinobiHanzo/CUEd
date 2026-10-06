@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -97,7 +98,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
                 when {
                     nfc == null || !nfc.available -> "This phone has no NFC."
                     !nfc.enabled -> "NFC is off. Turn it on in system settings for tap-to-share."
-                    else -> "NFC ready: hold the phones back-to-back while the other one is on its Receive screen."
+                    else -> "NFC ready: hold the phones back-to-back. The other phone only needs its screen on; it reads this one like a tag and opens the share in CUEd (or the download page if CUEd is not installed)."
                 }, style = MaterialTheme.typography.bodySmall, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center,
             )
             if (nfc?.enabled == true) {
@@ -118,7 +119,12 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
     }
 }
 
-/** Receiver side: camera QR scanner + NFC reader mode. */
+/**
+ * Receiver side. NFC needs nothing from this screen: the other phone is a
+ * tag, Android reads it and opens the share in CUEd by itself. The camera
+ * stays off until "Scan a QR code" is tapped, because an open camera blocks
+ * NFC on some phones. A paste box covers links sent as messages.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit) {
@@ -126,9 +132,11 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
     val activity = context as? Activity
     val lifecycle = LocalLifecycleOwner.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    var status by remember { mutableStateOf("Point the camera at a CUEd QR, or tap phones together") }
+    var scanning by remember { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it; if (it) scanning = true }
+    var status by remember { mutableStateOf<String?>(null) }
     var handled by remember { mutableStateOf(false) }
+    var pasted by remember { mutableStateOf("") }
     val nfc = remember(activity) { activity?.let { NfcReader(it) } }
 
     fun handle(text: String) {
@@ -136,22 +144,32 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
         val p = SharePayload.decode(text)
         if (p == null) { status = "Not a CUEd share code"; return }
         handled = true
-        status = vm.receive(p)
-        onReceived(status)
-    }
-
-    LaunchedEffect(Unit) { if (!granted) launcher.launch(Manifest.permission.CAMERA) }
-    DisposableEffect(nfc) {
-        nfc?.startReading(onPayload = { handle(it) }, onError = { status = it })
-        onDispose { nfc?.stopReading() }
+        val msg = vm.receive(p)
+        status = msg
+        onReceived(msg)
     }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Receive") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } })
     }) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (granted) {
-                Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+        Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(16.dp))
+            Text("NFC", style = MaterialTheme.typography.titleMedium)
+            Text(
+                when {
+                    nfc == null || !nfc.available -> "This phone has no NFC. Use the QR code or a pasted link."
+                    !nfc.enabled -> "NFC is off. Turn it on in system settings; then a tap works from any screen."
+                    else -> "Ready. Keep the screen on and hold the phones back-to-back while the other one shows its Share screen. The share opens in CUEd on its own; you do not need to stay here."
+                },
+                style = MaterialTheme.typography.bodyMedium, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(24.dp))
+            Text("QR code", style = MaterialTheme.typography.titleMedium)
+            if (!scanning) {
+                Text("The camera stays off until you ask, since an open camera blocks NFC on some phones.", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                Button(onClick = { if (granted) scanning = true else launcher.launch(Manifest.permission.CAMERA) }, modifier = Modifier.padding(top = 8.dp)) { Text("Scan a QR code") }
+            } else {
+                Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).padding(top = 8.dp)) {
                     AndroidView(factory = { ctx ->
                         val view = PreviewView(ctx)
                         val executor = Executors.newSingleThreadExecutor()
@@ -169,20 +187,15 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
                         view
                     }, modifier = Modifier.fillMaxSize())
                 }
-            } else {
-                Spacer(Modifier.height(40.dp))
-                Text("Camera permission needed to scan QR codes", color = Muted)
-                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }, modifier = Modifier.padding(8.dp)) { Text("Grant") }
+                DisposableEffect(Unit) { onDispose { runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() } } }
+                OutlinedButton(onClick = { scanning = false; runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() } }, modifier = Modifier.padding(top = 8.dp)) { Text("Stop the camera") }
             }
-            Spacer(Modifier.height(16.dp))
-            Text(status, color = if (handled) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
-            Text(
-                when {
-                    nfc == null || !nfc.available -> "No NFC on this phone; QR still works."
-                    !nfc.enabled -> "NFC is off; QR still works."
-                    else -> "NFC reader active."
-                }, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp),
-            )
+            Spacer(Modifier.height(24.dp))
+            Text("Pasted link", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(value = pasted, onValueChange = { pasted = it }, singleLine = true, placeholder = { Text("cued://share?... or https://shinobihanzo.github.io/CUEd/#...") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+            OutlinedButton(onClick = { handle(pasted.trim()) }, enabled = pasted.isNotBlank(), modifier = Modifier.padding(top = 6.dp)) { Text("Use this link") }
+            status?.let { Text(it, color = if (handled) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp)) }
+            Spacer(Modifier.height(96.dp))
         }
     }
 }
