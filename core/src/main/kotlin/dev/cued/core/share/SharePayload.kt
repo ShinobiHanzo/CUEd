@@ -25,6 +25,9 @@ data class SharePayload(
     val genres: List<String> = emptyList(),
     val bpm: Float? = null,
     val version: Int = CuedCore.SHARE_PAYLOAD_VERSION,
+    /** "Send a friend request with it": the sender's account pubkey (hex) and name. */
+    val friendPubkey: String? = null,
+    val friendName: String? = null,
 ) {
     fun encode(): String = "${CuedCore.SHARE_SCHEME}://share?" + query()
 
@@ -45,6 +48,7 @@ data class SharePayload(
         apkUrl?.let { q["k"] = it }
         if (genres.isNotEmpty()) q["g"] = genres.joinToString(",")
         bpm?.let { q["b"] = "%.1f".format(java.util.Locale.ROOT, it) }
+        friendPubkey?.let { q["fr"] = it; friendName?.let { n -> q["fn"] = n } }
         return q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
 
@@ -75,6 +79,8 @@ data class SharePayload(
                 genres = q["g"]?.split(',')?.filter { it.isNotBlank() } ?: emptyList(),
                 bpm = q["b"]?.toFloatOrNull(),
                 version = q["v"]?.toIntOrNull() ?: 1,
+                friendPubkey = q["fr"]?.lowercase()?.takeIf { it.length == 64 && it.all { c -> Character.digit(c, 16) >= 0 } },
+                friendName = q["fn"],
             )
         }
 

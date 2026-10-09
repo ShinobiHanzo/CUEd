@@ -51,3 +51,57 @@ All of this is additive; nothing existing changes shape.
   verifies on the desktop and the other way round.
 - The funnel is the user's own box. The phone pins the desktop's certificate from the QR, so even
   that box only ever sees ciphertext.
+
+## Round 2: what the phone must add
+
+The desktop now enforces three tiers, carries accounts on a signed chain,
+knows friends, lets friends listen in, and syncs a few settings. The phone
+side of each, in the order that makes the rest work:
+
+1. **Biometric key.** At pairing, make an EC P-256 key in the Android
+   Keystore with `setUserAuthenticationRequired(true)` (biometric or device
+   credential) and send its public half as `biokey` in `POST /api/pair`
+   (SEC1 uncompressed, hex). Away from the LAN the desktop is read-only and
+   every read needs `X-Cued-Assertion`: `GET /api/auth/challenge`, show
+   `BiometricPrompt`, sign `cued-bio|<device>|<challenge>` with the key,
+   send `<challenge>.<sig hex>`; keep it for 10 minutes. Writes (sync,
+   upload, settings, friends) only happen on the LAN; the client should
+   check the tier before trying and say so instead of showing a 403.
+2. **Account at pairing.** The pairing screen offers *Join this desktop's
+   account*, *Keep my account on both* or *Separate*. `join` opens the
+   `account.sealed` from the pair response with `Seal.open(secret bytes,
+   "account", …)` (`core/desktop/Seal.kt`) and replaces the station key with
+   the bundle's; `keep` sends `POST /api/account/import` with the phone's
+   key and chain sealed the same way. The chain (`core/desktop/AccountChain.kt`)
+   is kept in the phone's files and merged with `GET`/`POST /api/account/chain`
+   on every LAN sync, so settings and device lists converge. Only public keys
+   are ever shown to anyone else; the nsec stays in the Keystore-backed store
+   and in sealed transfers.
+3. **Friends.** A *Friends* screen: my `cued://friend` QR (`FriendLink.kt`),
+   NFC offer of the same link exactly like a share, scan or paste to add,
+   requests with accept/decline, remove. The share page gets a "send a
+   friend request with it" toggle that fills `friendPubkey`/`friendName`
+   on the `SharePayload`; the Receive screen offers "add as friend" when a
+   share carries them. Friend state lives on the phone and is pushed to the
+   desktop's `/api/friends` on the LAN; kind-30778 events carry it over
+   relays.
+4. **Listening in.** A friend's station is metadata only (current track
+   plus the next three). When the host's desktop offers `stream`, `cover`
+   and `lyrics` capability URLs on each entry, the phone resolves in this
+   order: own library, host stream into a temporary file, source link
+   through the downloader; plays at `now − startedAt`, corrects drift only
+   past 3 s, and keeps temporary audio, thumbnails, lyrics and metadata for
+   48 hours (a new `kind = 'listen'` cache row class next to `station`).
+5. **Shared settings.** `GET /api/settings/shared` after every sync: the
+   relay switch (`relayEnabled`, off by default; when on, add the desktop
+   relay URL to the Stations relay list), `friendStreaming`, the theme
+   colours and the station name. Changes made on the phone go through
+   `PUT /api/settings/shared` on the LAN and land in the chain.
+6. **Theme colours** under Settings as a sub-page, driven by the same keys
+   (`bg, panel, panel2, text, muted, accent, accent2, danger, border`), with
+   the desktop's four presets.
+7. **Mini player.** 150×150 dp bottom-right, cover as background, the live
+   spectrograph drawn over it at 30 % opacity pinned to the bottom edge,
+   close button and an italic *L* beside it; *L* grows the card to 150×400
+   with the cover blurred behind synced lyrics (the existing `LyricsPanel`
+   logic, centred current line).
