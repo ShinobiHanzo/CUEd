@@ -64,6 +64,7 @@ APK and publishes it on the Releases page. `.github/workflows/pages.yml` publish
 - [Downloading with spotdl](docs/downloading.md): Termux vs companion setup
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Stations](docs/stations.md): broadcast what you play to followers anywhere; keys, relays, the listener's cache
+- [Desktop client](docs/desktop.md): pair with [CUEd-desktop](https://github.com/ShinobiHanzo/CUEd-desktop) over a QR code for backup, streaming, downloads and a relay of your own
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
 - [Widgets and the lock-screen player](docs/widgets-and-lockscreen.md): resizable home-screen widget, CUEd's own player above the keyguard
 - [Bug reports](docs/bug-reports.md): what Report a bug sends, where, and how to read it
