@@ -514,6 +514,9 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setDebugLog(on: Boolean) = viewModelScope.launch { graph.settings.setDebugLog(on) }
     val devMode: StateFlow<Boolean> = graph.settings.devMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     fun setDevMode(on: Boolean) = viewModelScope.launch { graph.settings.setDevMode(on) }
+    val theme: StateFlow<dev.cued.app.ui.theme.ThemeColors> = graph.settings.theme.stateIn(viewModelScope, SharingStarted.Eagerly, dev.cued.app.ui.theme.ThemeColors.DEFAULT)
+    fun setTheme(t: dev.cued.app.ui.theme.ThemeColors) = viewModelScope.launch { graph.settings.setTheme(t) }
+    fun resetTheme() = viewModelScope.launch { graph.settings.resetTheme() }
     fun logRecent() = dev.cued.app.util.DebugLog.recent(60)
     fun logSize() = dev.cued.app.util.DebugLog.sizeBytes()
     fun clearLog() = dev.cued.app.util.DebugLog.clear()

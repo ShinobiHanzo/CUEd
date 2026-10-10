@@ -77,5 +77,7 @@ class Graph(val app: Application) {
     init {
         // New or previously unlabelled files get their tag genres read after each scan.
         library.onScanned = { genres.refreshFromTagsAsync(onlyMissing = true) }
+        // The live palette follows the saved theme while developer mode is on, and the default otherwise.
+        settings.effectiveTheme.onEach { dev.cued.app.ui.theme.CuedPalette.colors = it }.launchIn(appScope)
     }
 }

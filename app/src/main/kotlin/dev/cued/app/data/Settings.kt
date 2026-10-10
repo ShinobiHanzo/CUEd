@@ -130,6 +130,8 @@ class Settings(private val context: Context) {
         val bands = intPreferencesKey("spectrum_bands")
         val backend = stringPreferencesKey("download_backend")
         val devMode = booleanPreferencesKey("dev_mode")
+        /** Custom theme, one string key per colour: `theme_bg`, `theme_accent`, … (same names as the desktop's shared theme). */
+        fun theme(key: String) = stringPreferencesKey("theme_$key")
         val companionUrl = stringPreferencesKey("companion_url")
         val format = stringPreferencesKey("download_format")
         val generateLrc = booleanPreferencesKey("download_generate_lrc")
@@ -194,9 +196,28 @@ class Settings(private val context: Context) {
         )
     }
 
-    /** Developer mode: shows the Termux and companion backends and their tools. Off by default. */
+    /** Developer mode: shows the Termux and companion backends, their tools, and the theme colours. Off by default. */
     val devMode: Flow<Boolean> = context.dataStore.data.map { it[K.devMode] ?: false }
     suspend fun setDevMode(on: Boolean) = context.dataStore.edit { it[K.devMode] = on }
+
+    /** The custom theme as saved (developer mode), defaults for anything unset. */
+    val theme: Flow<dev.cued.app.ui.theme.ThemeColors> = context.dataStore.data.map { p ->
+        dev.cued.app.ui.theme.ThemeColors.KEYS.fold(dev.cued.app.ui.theme.ThemeColors.DEFAULT) { acc, k ->
+            p[K.theme(k)]?.let { dev.cued.app.ui.theme.ThemeColors.normalise(it) }?.let { acc.with(k, it) } ?: acc
+        }
+    }
+
+    /** What the app actually paints with: the custom theme only while developer mode is on, else the default. */
+    val effectiveTheme: Flow<dev.cued.app.ui.theme.ThemeColors> = kotlinx.coroutines.flow.combine(devMode, theme) { dev, t -> if (dev) t else dev.cued.app.ui.theme.ThemeColors.DEFAULT }
+
+    suspend fun setTheme(t: dev.cued.app.ui.theme.ThemeColors) = context.dataStore.edit { p ->
+        for (k in dev.cued.app.ui.theme.ThemeColors.KEYS) {
+            val v = dev.cued.app.ui.theme.ThemeColors.normalise(t.get(k))
+            if (v == null || v == dev.cued.app.ui.theme.ThemeColors.DEFAULT.get(k)) p.remove(K.theme(k)) else p[K.theme(k)] = v
+        }
+    }
+
+    suspend fun resetTheme() = context.dataStore.edit { p -> for (k in dev.cued.app.ui.theme.ThemeColors.KEYS) p.remove(K.theme(k)) }
 
     val download: Flow<DownloadSettings> = context.dataStore.data.map { p ->
         val dev = p[K.devMode] ?: false

@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -148,8 +154,13 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
         UpdateBlock(vm)
 
-        SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools.")
+        SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools, and the theme colours below can be changed.")
         DevModeBlock(vm)
+        val devOn by vm.devMode.collectAsState()
+        if (devOn) {
+            SectionHeader("Theme colours", "Nine colours the whole app is drawn with. Same keys as the desktop client, so a theme can travel with the account. Saved colours apply only while developer mode is on.")
+            ThemeBlock(vm)
+        }
 
         SectionHeader("Debug log", "Off by default. On: downloads, playback errors, updates and crashes are written to a private file you can share.")
         DebugBlock(vm)
@@ -219,6 +230,44 @@ private fun DevModeBlock(vm: SettingsViewModel) {
     val on by vm.devMode.collectAsState()
     Column(Modifier.padding(horizontal = 16.dp)) {
         ToggleRow("Developer mode", if (on) "Termux and companion backends are available on the Downloads screen." else "Only the built-in downloader is shown; any Termux or companion choice from before is ignored until this is on.", on) { vm.setDevMode(it) }
+    }
+}
+
+@Composable
+private fun ThemeBlock(vm: SettingsViewModel) {
+    val saved by vm.theme.collectAsState()
+    var draft by remember(saved) { mutableStateOf(saved) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            dev.cued.app.ui.theme.ThemeColors.PRESETS.forEach { (name, preset) ->
+                TextButton(onClick = { draft = preset }) { Text(name, color = if (draft == preset) Teal else Muted) }
+            }
+        }
+        dev.cued.app.ui.theme.ThemeColors.KEYS.forEach { key ->
+            val value = draft.get(key)
+            val valid = dev.cued.app.ui.theme.ThemeColors.normalise(value) != null
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(dev.cued.app.ui.theme.colorOf(value, Muted)).border(1.dp, Muted.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
+                )
+                Spacer(Modifier.size(10.dp))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { draft = draft.with(key, it) },
+                    singleLine = true,
+                    isError = !valid,
+                    label = { Text(dev.cued.app.ui.theme.ThemeColors.LABELS[key] ?: key) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        val allValid = dev.cued.app.ui.theme.ThemeColors.KEYS.all { dev.cued.app.ui.theme.ThemeColors.normalise(draft.get(it)) != null }
+        Row {
+            TextButton(onClick = { vm.setTheme(draft) }, enabled = allValid && draft != saved) { Text("Save") }
+            TextButton(onClick = { draft = saved }, enabled = draft != saved) { Text("Revert") }
+            TextButton(onClick = { vm.resetTheme(); draft = dev.cued.app.ui.theme.ThemeColors.DEFAULT }) { Text("Reset to default") }
+        }
+        Text(if (allValid) "Colours are #rrggbb. Save repaints the app at once." else "A colour is not valid: use #rrggbb.", style = MaterialTheme.typography.bodySmall, color = if (allValid) Muted else MaterialTheme.colorScheme.error)
     }
 }
 

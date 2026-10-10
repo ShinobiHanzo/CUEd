@@ -35,7 +35,8 @@ playlists, which is what the API keys are for.
 is off the Downloads screen shows only the built-in downloader, the backend chooser and the
 Termux/companion test and repair tools are hidden, and every job runs built-in even if Termux or
 the companion had been chosen earlier. Switch it on to get the chooser back; the previous choice
-is remembered.
+is remembered. Developer mode also unlocks **Theme colours** under Settings: the nine colours the
+app is drawn with, with the desktop's presets; they apply only while developer mode is on.
 
 ## Option A: Termux on the phone
 
