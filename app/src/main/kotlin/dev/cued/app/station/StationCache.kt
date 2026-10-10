@@ -89,22 +89,25 @@ class StationCache(private val graph: Graph, private val store: StationStore) {
      * or a station entry with a host stream) and returns the temporary row id.
      * Blocks until done; the Desktop screen shows its own progress.
      */
-    suspend fun fetchFromUrl(t: StationTrack, url: String): Long = withContext(Dispatchers.IO) {
+    suspend fun fetchFromUrl(t: StationTrack, url: String, open: (String) -> java.net.HttpURLConnection = ::plainOpen): Long = withContext(Dispatchers.IO) {
         val key = keyOf(t)
         (_status.value[key] as? Fetch.Ready)?.let { ready -> graph.db.tracks().byId(ready.trackId)?.let { if (it.path == null || File(it.path).exists()) return@withContext ready.trackId } }
         set(key, Fetch.Fetching(0f))
         try {
-            val file = download(url, File(dir, safe(key).ifBlank { System.currentTimeMillis().toString() })) { p -> set(key, Fetch.Fetching(p)) }
+            val file = download(url, File(dir, safe(key).ifBlank { System.currentTimeMillis().toString() }), open) { p -> set(key, Fetch.Fetching(p)) }
             val id = insertCached(file, t)
             set(key, Fetch.Ready(id, fromLibrary = false))
             id
         } catch (e: Exception) { set(key, Fetch.Failed(e.message ?: "Fetch failed")); throw e }
     }
 
-    /** Plain HTTP(S) download of a capability URL to [base] plus the extension the content type implies. */
-    private fun download(url: String, base: File, onProgress: (Float) -> Unit): File {
-        val conn = java.net.URL(url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
-        conn.connectTimeout = 8_000; conn.readTimeout = 120_000
+    /**
+     * Download of a capability URL to [base] plus the extension the content type
+     * implies. [open] supplies the connection: the plain system trust for a
+     * friend's links, or a paired desktop's pinned client for its own library.
+     */
+    private fun download(url: String, base: File, open: (String) -> java.net.HttpURLConnection = ::plainOpen, onProgress: (Float) -> Unit): File {
+        val conn = open(url)
         try {
             if (conn.responseCode !in 200..299) error("the host answered HTTP ${conn.responseCode}")
             val mime = conn.contentType.orEmpty().substringBefore(';').trim()
@@ -117,6 +120,12 @@ class StationCache(private val graph: Graph, private val store: StationStore) {
             } }
             return out
         } finally { conn.disconnect() }
+    }
+
+    private fun plainOpen(url: String): java.net.HttpURLConnection {
+        val conn = java.net.URL(url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
+        conn.connectTimeout = 8_000; conn.readTimeout = 120_000
+        return conn
     }
 
     /** Probes the file, reads its duration and inserts the temporary `station` row. */

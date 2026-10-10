@@ -68,6 +68,10 @@ pair with a real desktop is its first run. Treat `desktop/` and the two new scre
 
 - Background sync (WorkManager, unmetered only) is not scheduled yet: backup runs when you tap
   *Back up now* or when the Desktop screen is open.
+- A paired desktop's own library streams through the pinned client, so it works from outside the
+  house. A *friend's* `stream` / `cover` / `lyrics` links carry no certificate pin yet, so from
+  outside the LAN they only work when that friend's funnel has a certificate the phone already
+  trusts; otherwise the listener falls back to the source link through the downloader.
 - Blob backup of playlists and settings (`PUT /api/backup/blob/<name>`) has a client method but no
   screen yet.
 - The `:app` module has not been compiled in the environment this was written in; expect a round of

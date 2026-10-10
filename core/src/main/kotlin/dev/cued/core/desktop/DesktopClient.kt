@@ -208,6 +208,23 @@ class DesktopClient(val base: String, var token: String? = null, val certSha256:
         } finally { conn.disconnect() }
     }
 
+    /**
+     * Opens a GET on one of this desktop's URLs (a [trackUrl], [coverUrl] or
+     * capability link) with the certificate pin and the assertion applied, for
+     * callers that stream the body themselves. The caller disconnects it.
+     */
+    fun open(url: String): HttpURLConnection {
+        require(url.startsWith(base.trimEnd('/'))) { "not a URL of this desktop" }
+        val conn = URL(url).openConnection(java.net.Proxy.NO_PROXY) as HttpURLConnection
+        conn.connectTimeout = CONNECT_TIMEOUT_MS; conn.readTimeout = 120_000
+        conn.requestMethod = "GET"
+        conn.instanceFollowRedirects = false
+        token?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+        if (remote) assertion?.let { conn.setRequestProperty("X-Cued-Assertion", it) }
+        if (conn is HttpsURLConnection && certSha256 != null) pin(conn, certSha256)
+        return conn
+    }
+
     private fun connection(method: String, path: String, auth: Boolean = true): HttpURLConnection {
         val conn = URL(base.trimEnd('/') + path).openConnection(java.net.Proxy.NO_PROXY) as HttpURLConnection
         conn.connectTimeout = CONNECT_TIMEOUT_MS; conn.readTimeout = READ_TIMEOUT_MS

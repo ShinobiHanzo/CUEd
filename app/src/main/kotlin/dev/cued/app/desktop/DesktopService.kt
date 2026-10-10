@@ -387,7 +387,7 @@ class DesktopService(private val graph: Graph) {
     }
 
     /** Runs [block] against every paired desktop reachable on the LAN; failures are logged, never fatal. */
-    private suspend fun pushToDesktops(block: suspend (DesktopClient) -> Unit) {
+    private suspend fun pushToDesktops(block: suspend (DesktopClient) -> Unit) = withContext(Dispatchers.IO) {
         for (d in store.desktops.first()) {
             runCatching { val c = connect(d); if (!c.remote) block(c) }.onFailure { DebugLog.d(TAG, "friends push to ${d.label}: ${it.message}") }
         }
@@ -448,7 +448,8 @@ class DesktopService(private val graph: Graph) {
             graph.db.tracks().byTitleArtist(t.title, t.artist)?.let { if (it.kind != TrackEntity.KIND_STATION || (it.path != null && File(it.path).exists())) return@runCatching it }
             val c = connect(d, activity)
             val entry = StationTrack(title = t.title, artist = t.artist, album = t.album, durationMs = t.durationMs, link = t.link, key = "desktop:${t.sha256}", stream = c.trackUrl(t.sha256))
-            val id = graph.station.cache.fetchFromUrl(entry, c.trackUrl(t.sha256))
+            // Through the client, so the desktop's certificate pin and the assertion apply from outside the LAN.
+            val id = graph.station.cache.fetchFromUrl(entry, c.trackUrl(t.sha256)) { url -> c.open(url) }
             graph.db.tracks().byId(id) ?: error("cached row vanished")
         }
     }

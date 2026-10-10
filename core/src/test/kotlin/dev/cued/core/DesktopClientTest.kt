@@ -59,6 +59,7 @@ class DesktopClientTest {
                     else ex.reply(200, """{"token":"tok-${o["account"]!!.jsonPrimitive.content}-${o["biokey"]!!.jsonPrimitive.content.length}","desktop":{"name":"Fake","pubkey":"${"ab".repeat(32)}","relay":"ws://x/relay","funnel":null,"cert":null}}""")
                 }
                 path == "/api/auth/challenge" -> ex.reply(200, """{"challenge":"c0ffee","expiresInSec":120}""")
+                ex.requestMethod == "GET" && path.startsWith("/api/track/") -> ex.reply(200, "RIFFfake", type = "audio/mp4")
                 ex.requestMethod == "POST" && path == "/api/sync/manifest" -> {
                     val tracks = Nostr.json.parseToJsonElement(String(body)).jsonObject["tracks"]!!.jsonArray
                     val missing = tracks.map { it.jsonObject["sha256"]!!.jsonPrimitive.content }.filter { it !in complete }
@@ -129,6 +130,15 @@ class DesktopClientTest {
         assertTrue(remote.remote)
         assertTrue(remote.trackUrl("x").endsWith("?token=t1&assertion=c0ffee.0102"))
         assertEquals(DesktopClient.CONNECT_TIMEOUT_MS, 4_000)
+        // open(): the streaming path goes through the client, so the bearer (and, remotely, the pin) apply.
+        val conn = c.open(c.trackUrl("ab".repeat(32)))
+        try {
+            assertEquals(200, conn.responseCode)
+            assertEquals("audio/mp4", conn.contentType)
+            assertEquals("RIFFfake", String(conn.inputStream.readBytes()))
+        } finally { conn.disconnect() }
+        assertEquals("Bearer t1", lastAuth)
+        assertFailsWith<IllegalArgumentException> { c.open("http://elsewhere.invalid/api/track/x") }
     }
 
     @Test fun manifestAndResumableUpload() {
