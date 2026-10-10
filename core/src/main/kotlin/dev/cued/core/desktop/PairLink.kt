@@ -42,8 +42,8 @@ data class PairLink(
      * [pubkey] its station key (or empty). The proof shows the desktop this
      * phone saw the QR; the secret itself never crosses the wire.
      */
-    fun request(phoneName: String, device: String, pubkey: String = "", nonce: String = randomHex(8)): PairRequest =
-        PairRequest(name = phoneName, device = device, pubkey = pubkey, nonce = nonce, proof = proof(secret, device, phoneName, nonce))
+    fun request(phoneName: String, device: String, pubkey: String = "", nonce: String = randomHex(8), account: String = "separate", biokey: String = "", devhash: String = ""): PairRequest =
+        PairRequest(name = phoneName, device = device, pubkey = pubkey, nonce = nonce, proof = proof(secret, device, phoneName, nonce), account = account, biokey = biokey, devhash = devhash)
 
     companion object {
         const val VERSION = 1
@@ -89,7 +89,7 @@ data class PairLink(
     }
 }
 
-/** JSON body of `POST /api/pair`; field names are the wire names. */
+/** JSON body of `POST /api/pair`; field names are the wire names (§2 and §8: `account`, `biokey`, `devhash`). */
 data class PairRequest(
     val v: Int = PairLink.VERSION,
     val name: String,
@@ -97,6 +97,12 @@ data class PairRequest(
     val pubkey: String,
     val nonce: String,
     val proof: String,
+    /** `join` (take the desktop's account), `keep` (give the desktop mine) or `separate`. */
+    val account: String = "separate",
+    /** SEC1 hex of the phone's biometric P-256 key, or empty. */
+    val biokey: String = "",
+    /** `sha256("cued-device|" + device + "|" + salt)`, or empty. */
+    val devhash: String = "",
 ) {
     fun toJson(): String = buildString {
         append('{')
@@ -105,7 +111,10 @@ data class PairRequest(
         append("\"device\":").append(q(device)).append(',')
         append("\"pubkey\":").append(q(pubkey)).append(',')
         append("\"nonce\":").append(q(nonce)).append(',')
-        append("\"proof\":").append(q(proof))
+        append("\"proof\":").append(q(proof)).append(',')
+        append("\"account\":").append(q(account)).append(',')
+        append("\"biokey\":").append(q(biokey)).append(',')
+        append("\"devhash\":").append(q(devhash))
         append('}')
     }
 

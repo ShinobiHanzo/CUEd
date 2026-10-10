@@ -62,7 +62,7 @@ import androidx.navigation.navArgument
 import dev.cued.app.Graph
 import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
-import dev.cued.app.ui.components.MiniPlayer
+import dev.cued.app.ui.components.FloatingMiniPlayer
 import dev.cued.app.ui.components.ReceivedSplash
 import dev.cued.app.ui.screens.StationScreen
 import dev.cued.app.ui.screens.FollowingScreen
@@ -72,9 +72,15 @@ import dev.cued.app.ui.theme.Teal
 import dev.cued.core.station.Station
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.People
+import androidx.compose.ui.Alignment
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
+import dev.cued.app.ui.screens.DesktopsScreen
+import dev.cued.app.ui.screens.DesktopLibraryScreen
+import dev.cued.app.ui.screens.FriendsScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
 import dev.cued.app.ui.screens.AlbumScreen
@@ -103,6 +109,10 @@ sealed class Inbound {
     data object NowPlaying : Inbound()
     /** Assistant "play <query>": empty query means "play something". */
     data class VoicePlay(val query: String) : Inbound()
+    /** A cued://pair link from a desktop's pairing code. */
+    data class Pair(val text: String) : Inbound()
+    /** A cued://friend link (QR, NFC tap, message): send or accept a friend request. */
+    data class Friend(val text: String) : Inbound()
 }
 
 /** Bottom bar: three destinations, Home in the middle. Downloads and Settings live in the side menu. */
@@ -130,6 +140,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val svm: ShareViewModel = viewModel(factory = factory)
     val stvm: StationViewModel = viewModel(factory = factory)
     val setvm: SettingsViewModel = viewModel(factory = factory)
+    val dkvm: DesktopViewModel = viewModel(factory = factory)
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -206,6 +217,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             is Inbound.Download -> { pendingDownload = i.source; nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } }
             Inbound.NowPlaying -> nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true }
             is Inbound.VoicePlay -> { val r = pvm.playQuery(i.query); snackbar.showSnackbar(if (r.tracks.isEmpty()) r.label else "Playing ${r.label}") }
+            is Inbound.Pair -> if (dkvm.offerPair(i.text)) nav.navigate("desktops") { launchSingleTop = true } else snackbar.showSnackbar("Not a pairing code")
+            is Inbound.Friend -> { dkvm.addFriend(i.text); nav.navigate("friends") { launchSingleTop = true } }
             null -> {}
         }
         if (incoming != null) onInboundHandled()
@@ -217,6 +230,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     // so the current track is always one tap away while browsing an artist or searching.
     val showChrome = route != Route.NOW_PLAYING
     val rootTitle = Route.topBarTitles[route]
+    // The floating mini player hides on × until the next track starts.
+    var miniHiddenFor by remember { mutableStateOf<Long?>(null) }
+    val uiSettings by pvm.uiSettings.collectAsState()
+    val lyrics by pvm.lyrics.collectAsState()
+    val friends by dkvm.friends.collectAsState()
+    val desktops by dkvm.desktops.collectAsState()
     val activeDownloads by dvm.activeCount.collectAsState()
     val stationOnAir by stvm.onAir.collectAsState()
     val stationsEnabled by stvm.enabled.collectAsState()
@@ -259,6 +278,13 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     onClick = { scope.launch { drawer.close() }; nav.navigate("longplays") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Receive a share (QR / NFC)") }, selected = false, icon = { Icon(Icons.Default.QrCodeScanner, null) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("receive") })
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(label = { Text("Desktop") }, selected = route == "desktops", icon = { Icon(Icons.Default.Computer, null) },
+                    badge = { if (desktops.isNotEmpty()) Text(if (desktops.size == 1) desktops.first().label else "${desktops.size} linked") },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("desktops") { launchSingleTop = true } })
+                NavigationDrawerItem(label = { Text("Friends") }, selected = route == "friends", icon = { Icon(Icons.Default.People, null) },
+                    badge = { val n = friends.count { it.status == "pending_in" }; if (n > 0) Text("$n request${if (n == 1) "" else "s"}", color = Teal) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("friends") { launchSingleTop = true } })
                 if (stationsEnabled) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 if (stationsEnabled) NavigationDrawerItem(label = { Text(if (stationOnAir) "Your station · on air" else "Start a Station") }, selected = route == "station", icon = { Icon(Icons.Default.Radio, null, tint = if (stationOnAir) Teal else androidx.compose.material3.LocalContentColor.current) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("station") { launchSingleTop = true } })
@@ -301,7 +327,6 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         },
         bottomBar = {
             if (showChrome) Column {
-                MiniPlayer(player, currentTrack, onOpen = { nav.navigate(Route.NOW_PLAYING) }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onPrevious = { pvm.previous() })
                 NavigationBar {
                     Tab.entries.forEach { t ->
                         NavigationBarItem(
@@ -360,7 +385,10 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 composable(Route.DOWNLOADS) {
                     DownloadsScreen(dvm, initialSource = pendingDownload, onSourceConsumed = { pendingDownload = null })
                 }
-                composable(Route.SETTINGS) { SettingsScreen(setvm, stvm, onOpenReceive = { nav.navigate("receive") }, onStationSetup = { nav.navigate("station/setup") { launchSingleTop = true } }) }
+                composable(Route.SETTINGS) {
+                    SettingsScreen(setvm, stvm, onOpenReceive = { nav.navigate("receive") }, onStationSetup = { nav.navigate("station/setup") { launchSingleTop = true } },
+                        onOpenDesktop = { nav.navigate("desktops") { launchSingleTop = true } }, onOpenFriends = { nav.navigate("friends") { launchSingleTop = true } })
+                }
 
                 composable(Route.NOW_PLAYING) { NowPlayingScreen(pvm, lvm, onClose = { nav.popBackStack() }, onMore = { id -> scope.launch { graph.library.track(id)?.let { sheetTrack = it } } }) }
                 composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { e ->
@@ -412,7 +440,23 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                             nav.popBackStack()
                             if (stvm.ready.value) { stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }
                             else { pendingFollow = link; nav.navigate("station/setup") { launchSingleTop = true } }
-                        })
+                        },
+                        onPair = { link -> nav.popBackStack(); if (dkvm.offerPair(link)) nav.navigate("desktops") { launchSingleTop = true } },
+                        onFriend = { link -> nav.popBackStack(); dkvm.addFriend(link); nav.navigate("friends") { launchSingleTop = true } })
+                }
+                // Desktop link and friends (CUEd-desktop protocol §6–§11).
+                composable("desktops") {
+                    DesktopsScreen(dkvm, onBack = { nav.popBackStack() }, onScan = { nav.navigate("receive") }, onOpenLibrary = { nav.navigate("desktop/${it.id}") },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
+                }
+                composable("desktop/{id}") { e ->
+                    DesktopLibraryScreen(dkvm, e.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() },
+                        onPlay = { t -> pvm.play(listOf(t)); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } })
+                }
+                composable("friends") {
+                    FriendsScreen(dkvm, onBack = { nav.popBackStack() }, onScan = { nav.navigate("receive") },
+                        onListen = { pub -> if (stvm.ready.value) nav.navigate("listen/$pub") else nav.navigate("station/setup") { launchSingleTop = true } },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
                 composable("station/setup") {
                     StationSetupScreen(stvm, onBack = { nav.popBackStack() }, onDone = {
@@ -435,6 +479,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
             }
+            // The floating mini player: bottom-right, over whatever screen is open, until × or the full player.
+            if (showChrome && player.trackId != null && miniHiddenFor != player.trackId) FloatingMiniPlayer(
+                state = player, track = currentTrack, bus = pvm.spectrumBus, visualDelayMs = uiSettings.visualDelayMs, lyrics = lyrics,
+                onOpen = { nav.navigate(Route.NOW_PLAYING) }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onClose = { miniHiddenFor = player.trackId },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
+            )
         }
     }
     } // ModalNavigationDrawer

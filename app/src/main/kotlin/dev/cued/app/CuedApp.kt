@@ -73,6 +73,8 @@ class Graph(val app: Application) {
     val bugs: BugReporter by lazy { BugReporter(app, settings, appScope) }
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val station: dev.cued.app.station.StationService by lazy { dev.cued.app.station.StationService(this) }
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val desktop: dev.cued.app.desktop.DesktopService by lazy { dev.cued.app.desktop.DesktopService(this) }
 
     init {
         // New or previously unlabelled files get their tag genres read after each scan.

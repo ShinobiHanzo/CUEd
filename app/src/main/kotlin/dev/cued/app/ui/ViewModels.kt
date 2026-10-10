@@ -73,6 +73,7 @@ class CuedVmFactory(private val graph: Graph) : ViewModelProvider.Factory {
         modelClass.isAssignableFrom(ShareViewModel::class.java) -> ShareViewModel(graph) as T
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(graph) as T
         modelClass.isAssignableFrom(StationViewModel::class.java) -> StationViewModel(graph) as T
+        modelClass.isAssignableFrom(DesktopViewModel::class.java) -> DesktopViewModel(graph) as T
         else -> error("Unknown ViewModel $modelClass")
     }
 }
@@ -330,6 +331,7 @@ data class ShareUiState(
     val qr: Bitmap? = null,
     val includeFile: Boolean = true,
     val includeApk: Boolean = false, // off by default: the share carries only the track unless asked
+    val includeFriend: Boolean = false, // adds this account's public key as a friend request (protocol §9)
     val error: String? = null,
 )
 
@@ -351,6 +353,7 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
 
     fun setIncludeFile(v: Boolean) { _state.value = _state.value.copy(includeFile = v); rebuild() }
     fun setIncludeApk(v: Boolean) { _state.value = _state.value.copy(includeApk = v); rebuild() }
+    fun setIncludeFriend(v: Boolean) { _state.value = _state.value.copy(includeFriend = v); rebuild() }
 
     private fun rebuild() {
         val id = trackId ?: return
@@ -358,11 +361,15 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             val t = graph.library.track(id) ?: return@launch
             val genres = graph.library.genresOf(id)
             val s = _state.value
+            // The friend request rides along as the public key only; the private key never leaves the phone.
+            val friendKey = if (s.includeFriend) runCatching { graph.station.store.ensureIdentity().pubkeyHex }.getOrNull() else null
+            val friendName = friendKey?.let { graph.station.store.name.first().ifBlank { graph.desktop.store.phoneName.first() }.takeIf { n -> n.isNotBlank() } }
             val sp = SharePayload(
                 title = t.title, artist = t.artist, link = t.sourceLink,
                 fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
                 apkUrl = if (s.includeApk) graph.shareServer.apkUrl() else null,
                 genres = genres, bpm = t.bpm,
+                friendPubkey = friendKey, friendName = friendName,
             )
             // QR carries the web form: a stock camera lands on the download page, CUEd opens it directly.
             // NFC leads with the cued:// form so the receiving CUEd launches straight away (see SharePayloadHolder).
@@ -392,6 +399,8 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
      * is fetched twice. [force] fetches even when the library already has it.
      */
     fun receive(payload: SharePayload, force: Boolean = false): String {
+        // A share can carry a friend request (protocol §9); remember it for the Friends screen either way.
+        payload.friendPubkey?.let { pk -> viewModelScope.launch { runCatching { graph.desktop.noteIncomingRequest(pk, payload.friendName.orEmpty()) } } }
         val key = payload.fileUrl ?: payload.link ?: "${payload.artist}|${payload.title}"
         val prev = seen[key]
         if (!force && prev != null && prev.status !is ReceiveStatus.Failed) {

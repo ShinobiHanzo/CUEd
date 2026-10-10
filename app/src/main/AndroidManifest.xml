@@ -26,6 +26,8 @@
 
     <!-- NFC tap-to-share -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Desktop link: reads from outside the LAN are signed with a biometric-gated key (CUEd-desktop protocol §7) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- QR scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -74,12 +76,16 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cued" android:host="share" />
                 <data android:scheme="cued" android:host="station" />
+                <data android:scheme="cued" android:host="pair" />
+                <data android:scheme="cued" android:host="friend" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="cued" android:host="share" />
                 <data android:scheme="cued" android:host="station" />
+                <data android:scheme="cued" android:host="pair" />
+                <data android:scheme="cued" android:host="friend" />
             </intent-filter>
             <!-- Tap-to-share: the other phone's stock NFC reader finds a URL tag pointing at the download page with the share in its fragment.
                  (No VIEW filter for this host: a project page cannot serve /.well-known/assetlinks.json at the domain root, so the link could never be verified.) -->

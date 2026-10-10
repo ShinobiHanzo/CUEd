@@ -111,6 +111,13 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Include a link to install CUEd", Modifier.weight(1f)); Switch(checked = state.includeApk, onCheckedChange = vm::setIncludeApk, enabled = state.serverUrl != null)
             }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Send a friend request with it")
+                    Text("Adds your public key and name. They see what your station plays; your private key stays here.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                Switch(checked = state.includeFriend, onCheckedChange = vm::setIncludeFriend)
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 when {
@@ -147,7 +154,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit, onStation: (String) -> Unit = {}) {
+fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit, onStation: (String) -> Unit = {}, onPair: (String) -> Unit = {}, onFriend: (String) -> Unit = {}) {
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycle = LocalLifecycleOwner.current
@@ -161,6 +168,9 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
 
     fun handle(text: String) {
         if (handled) return
+        // Desktop pairing and friend codes (CUEd-desktop protocol §6 and §9) come through the same scanner.
+        if (dev.cued.core.desktop.PairLink.decode(text) != null) { handled = true; onPair(text.trim()); return }
+        if (dev.cued.core.desktop.FriendLink.decode(text) != null) { handled = true; onFriend(text.trim()); return }
         if (dev.cued.core.station.StationLink.decode(text) != null || dev.cued.core.crypto.Nip19.parse(text)?.first == "npub") { handled = true; onStation(text.trim()); return }
         val p = SharePayload.decode(text)
         if (p == null) { status = "Not a CUEd share code"; return }

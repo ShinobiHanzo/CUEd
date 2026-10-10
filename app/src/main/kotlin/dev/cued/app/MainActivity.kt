@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
             }
             Intent.ACTION_VIEW, android.nfc.NfcAdapter.ACTION_NDEF_DISCOVERED -> {
                 val text = intent.dataString ?: return
+                if (dev.cued.core.desktop.PairLink.decode(text) != null) { inbound.value = Inbound.Pair(text); return }
+                if (dev.cued.core.desktop.FriendLink.decode(text) != null) { inbound.value = Inbound.Friend(text); return }
                 if (dev.cued.core.station.StationLink.decode(text) != null) { inbound.value = Inbound.Follow(text); return }
                 val payload = SharePayload.decode(text)
                 if (payload != null) inbound.value = Inbound.Share(payload)
@@ -71,7 +73,10 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 val text = listOfNotNull(intent.getStringExtra(Intent.EXTRA_TEXT), intent.getStringExtra(Intent.EXTRA_SUBJECT)).joinToString("\n").trim()
                 if (text.isEmpty()) return
-                text.lines().map { it.trim() }.firstOrNull { dev.cued.core.station.StationLink.decode(it) != null }?.let { inbound.value = Inbound.Follow(it); return }
+                val lines = text.lines().map { it.trim() }
+                lines.firstOrNull { dev.cued.core.desktop.PairLink.decode(it) != null }?.let { inbound.value = Inbound.Pair(it); return }
+                lines.firstOrNull { dev.cued.core.desktop.FriendLink.decode(it) != null }?.let { inbound.value = Inbound.Friend(it); return }
+                lines.firstOrNull { dev.cued.core.station.StationLink.decode(it) != null }?.let { inbound.value = Inbound.Follow(it); return }
                 val payload = text.lines().firstNotNullOfOrNull { SharePayload.decode(it.trim()) }
                 if (payload != null) inbound.value = Inbound.Share(payload)
                 else if (SourceLinks.parse(text) != null || SourceLinks.shareTextToQuery(text) != null) inbound.value = Inbound.Download(text)

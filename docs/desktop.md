@@ -11,36 +11,48 @@ The wire protocol lives in that repository's `docs/protocol.md`; this page is th
 
 ## What works with this app today
 
-| Desktop feature | Phone side | Status |
+| Desktop feature | Phone side | Where |
 |---|---|---|
-| Desktop pulls a track from the Share screen | existing share server (`/track/<id>`, `/meta/<id>`) | works |
-| Desktop pushes a track to the phone (⇪ in the desktop library → QR) | existing Receive screen scans a `cued://share` with `f` pointing at the desktop | works |
-| spotdl downloads on the desktop | Downloads → Backend → Companion (LAN) → `http://<desktop>:8770` | works, same API as `tools/spotdl-server` |
-| Stations relayed through the desktop | Stations → relays → add `ws://<desktop>:8770/relay` | works, it is a normal NIP-01 relay |
-| Pairing, manifest sync, resumable upload/backup, streaming the desktop library, blob backup | **not yet in the app** | spec below; `core/desktop/PairLink.kt` is the first piece |
+| Pairing over the `cued://pair` QR (scan, paste, tap, or open the link) with the account choice *join / keep / separate* | side menu → **Desktop**, or Receive screen | `ui/screens/DesktopScreens.kt`, `desktop/DesktopService.pair` |
+| Three access tiers: writes only on the desktop's LAN; reads from outside signed with a biometric key | a P-256 key in the Android Keystore, `BiometricPrompt` on every assertion (10 min) | `desktop/BiometricSigner.kt`, `core/desktop/Assertion.kt` |
+| Manifest sync and resumable, content-addressed backup | Desktop → *Back up now*; hashes cached per track (size + modified) | `DesktopService.sync`, `core/desktop/DesktopClient.upload` |
+| Streaming the desktop library | Desktop → *Browse its library* → Play; the file lands in the 48-hour cache and plays like a station track | `DesktopLibraryScreen`, `station/StationCache.fetchFromUrl` |
+| Account chain (`create / profile / bind_device / settings`) | merged on every LAN sync; `join` opens the sealed bundle, `keep` seals the phone's | `core/desktop/AccountChain.kt`, `Seal.kt` |
+| Friends over QR, NFC, paste, a share's *send a friend request* toggle; kind-30778 events | side menu → **Friends**; share page toggle; Receive screen | `ui/screens/FriendsScreen.kt`, `ui/screens/ShareScreens.kt` |
+| Listening in with the host's `stream` / `cover` / `lyrics` capability links | the listener's cache tries the stream URL first, then the downloader; 48-hour retention | `station/StationCache.kt`, `core/station/Station.kt` |
+| Shared settings: relay switch (off by default), friend streaming, theme colours, station name | Desktop screen toggles; theme applied live; relay URL added/removed from the Stations relay list | `DesktopService.applyShared` |
+| Theme colours sub-page | Settings → Developer mode → Theme colours | `ui/theme/Theme.kt`, `ui/screens/SettingsScreen.kt` |
+| Floating mini player: 150×150 dp bottom-right, spectrograph at 30 % over the cover; italic *L* grows it to 150×400 with blurred cover and synced lyrics | every screen but the full player; × hides it until the next track | `ui/components/FloatingMiniPlayer.kt` |
+| Desktop pulls a track from the Share screen; pushes one with its ⇪ button; spotdl companion; plain NIP-01 relay | unchanged from before | share server, Receive screen, Downloads backend, Stations relays |
 
-## What the phone still has to learn
+The core half (`core/desktop/*`: `PairLink`, `FriendLink`, `Seal`, `AccountChain`, `Assertion`,
+`DesktopClient`, the manifest types) is pure JVM and covered by unit tests, including a fake
+desktop for the client. The Android half was written against the existing app APIs but has not
+been compiled on a real SDK yet: the CI debug-APK job is its first build, and the first phone to
+pair with a real desktop is its first run. Treat `desktop/` and the two new screens as beta.
 
-1. **`cued://pair` links.** `PairLink.decode` (in `core`) already parses them and builds the
-   `POST /api/pair` body with the HMAC proof. The manifest needs `<data android:scheme="cued" android:host="pair" />`
-   next to `share` and `station`, and the Receive screen's paste box / QR scanner should route it.
-   Pairing: try each `a` address (3 s connect timeout), then `f` with the certificate pinned to `c`
-   (compare the SHA-256 of the leaf DER; no CA). Store the token, the desktop name, `k` and `r`.
-   Offer to add `r` to the Stations relay list.
-2. **A `DesktopSync` worker** (WorkManager, unmetered network by default):
-   `POST /api/sync/manifest` with every library track (key = track id, sha256 of the file, size,
-   mime, tags, bpm, source link) → upload each hash in `missing` with `PUT /api/sync/track/<sha>`,
-   resuming from `HEAD`'s `X-Cued-Have` with `Content-Range`, `X-Cued-Meta` carrying the manifest
-   entry. Hashing a library once is the slow part: cache sha256 per track in Room (a new column),
-   recomputed when size or modified time changes.
-3. **Streaming the desktop library.** `GET /api/library` and `GET /api/track/<sha>` (range
-   requests, `?token=` accepted for players that cannot set headers) are enough for a "Desktop"
-   folder in the library drawer whose items play over HTTP, cached like station tracks.
-4. **Backup of what is not a file:** playlists export, settings, and the station key encrypted
-   with a passphrase, as blobs (`PUT /api/backup/blob/<name>`). The desktop never sees inside.
-5. **Settings → Desktop:** linked desktops, last sync, sync on Wi-Fi only, unlink.
+## How a phone talks to a desktop
 
-All of this is additive; nothing existing changes shape.
+1. **Pair.** `PairLink.decode` parses the QR. The phone tries each LAN address with a 4 s connect
+   timeout, then the funnel with the certificate pinned to the QR's `c` (SHA-256 of the leaf DER,
+   no CA). `POST /api/pair` carries the HMAC proof, the phone's station public key, the biometric
+   public key and a device hash. The dialog asks *join / keep / separate*; `join` replaces the
+   phone's station key with the desktop account's (sealed to the pairing secret), `keep` pushes the
+   phone's key and chain to the desktop the same way. The token is stored per desktop in a DataStore.
+2. **Tiers.** On the LAN the bearer token is enough. Anywhere else the daemon is read-only and every
+   read needs `X-Cued-Assertion`: `GET /api/auth/challenge`, a fingerprint or face, a signature over
+   `cued-bio|<device>|<challenge>`, kept for just under ten minutes. The phone checks `GET /api/me`
+   for its tier and says "writes only on the desktop's Wi-Fi" instead of showing a 403.
+3. **Sync.** `POST /api/sync/manifest` with every library track (sha256 cached per size + modified
+   time); each `missing` hash goes up with `PUT /api/sync/track/<sha>`, resuming from `HEAD`.
+   Then the account chain is merged both ways, shared settings are pulled and applied, and friend
+   state is pushed.
+4. **Stream.** `GET /api/library` lists the desktop's tracks; a play streams `GET /api/track/<sha>`
+   into the station cache (48 hours) and plays it like any received track.
+5. **Friends and listening in.** Friend state lives on the phone, is pushed to `/api/friends` on the
+   LAN and published as kind-30778 events over relays. When a friend's desktop has *friend
+   streaming* on, their station entries carry `stream`, `cover` and `lyrics` capability links; the
+   listener fetches those first and falls back to the source link.
 
 ## Why it is shaped this way
 
@@ -52,56 +64,11 @@ All of this is additive; nothing existing changes shape.
 - The funnel is the user's own box. The phone pins the desktop's certificate from the QR, so even
   that box only ever sees ciphertext.
 
-## Round 2: what the phone must add
+## What is still open
 
-The desktop now enforces three tiers, carries accounts on a signed chain,
-knows friends, lets friends listen in, and syncs a few settings. The phone
-side of each, in the order that makes the rest work:
-
-1. **Biometric key.** At pairing, make an EC P-256 key in the Android
-   Keystore with `setUserAuthenticationRequired(true)` (biometric or device
-   credential) and send its public half as `biokey` in `POST /api/pair`
-   (SEC1 uncompressed, hex). Away from the LAN the desktop is read-only and
-   every read needs `X-Cued-Assertion`: `GET /api/auth/challenge`, show
-   `BiometricPrompt`, sign `cued-bio|<device>|<challenge>` with the key,
-   send `<challenge>.<sig hex>`; keep it for 10 minutes. Writes (sync,
-   upload, settings, friends) only happen on the LAN; the client should
-   check the tier before trying and say so instead of showing a 403.
-2. **Account at pairing.** The pairing screen offers *Join this desktop's
-   account*, *Keep my account on both* or *Separate*. `join` opens the
-   `account.sealed` from the pair response with `Seal.open(secret bytes,
-   "account", …)` (`core/desktop/Seal.kt`) and replaces the station key with
-   the bundle's; `keep` sends `POST /api/account/import` with the phone's
-   key and chain sealed the same way. The chain (`core/desktop/AccountChain.kt`)
-   is kept in the phone's files and merged with `GET`/`POST /api/account/chain`
-   on every LAN sync, so settings and device lists converge. Only public keys
-   are ever shown to anyone else; the nsec stays in the Keystore-backed store
-   and in sealed transfers.
-3. **Friends.** A *Friends* screen: my `cued://friend` QR (`FriendLink.kt`),
-   NFC offer of the same link exactly like a share, scan or paste to add,
-   requests with accept/decline, remove. The share page gets a "send a
-   friend request with it" toggle that fills `friendPubkey`/`friendName`
-   on the `SharePayload`; the Receive screen offers "add as friend" when a
-   share carries them. Friend state lives on the phone and is pushed to the
-   desktop's `/api/friends` on the LAN; kind-30778 events carry it over
-   relays.
-4. **Listening in.** A friend's station is metadata only (current track
-   plus the next three). When the host's desktop offers `stream`, `cover`
-   and `lyrics` capability URLs on each entry, the phone resolves in this
-   order: own library, host stream into a temporary file, source link
-   through the downloader; plays at `now − startedAt`, corrects drift only
-   past 3 s, and keeps temporary audio, thumbnails, lyrics and metadata for
-   48 hours (a new `kind = 'listen'` cache row class next to `station`).
-5. **Shared settings.** `GET /api/settings/shared` after every sync: the
-   relay switch (`relayEnabled`, off by default; when on, add the desktop
-   relay URL to the Stations relay list), `friendStreaming`, the theme
-   colours and the station name. Changes made on the phone go through
-   `PUT /api/settings/shared` on the LAN and land in the chain.
-6. **Theme colours** under Settings as a sub-page, driven by the same keys
-   (`bg, panel, panel2, text, muted, accent, accent2, danger, border`), with
-   the desktop's four presets.
-7. **Mini player.** 150×150 dp bottom-right, cover as background, the live
-   spectrograph drawn over it at 30 % opacity pinned to the bottom edge,
-   close button and an italic *L* beside it; *L* grows the card to 150×400
-   with the cover blurred behind synced lyrics (the existing `LyricsPanel`
-   logic, centred current line).
+- Background sync (WorkManager, unmetered only) is not scheduled yet: backup runs when you tap
+  *Back up now* or when the Desktop screen is open.
+- Blob backup of playlists and settings (`PUT /api/backup/blob/<name>`) has a client method but no
+  screen yet.
+- The `:app` module has not been compiled in the environment this was written in; expect a round of
+  small fixes from the first CI build.

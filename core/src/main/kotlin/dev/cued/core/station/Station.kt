@@ -42,6 +42,10 @@ data class StationTrack(
     val cover: String? = null,
     /** Stable key for this entry on the host's side, so listeners can tell "same track again" from "moved on". */
     val key: String = "",
+    /** Capability URL on the host's desktop to fetch the audio (friend streaming on); listeners prefer it over the downloader. */
+    val stream: String? = null,
+    /** Capability URL for the lyrics on the host's desktop. */
+    val lyrics: String? = null,
 ) {
     /** What a listener's downloader is given. */
     val source: String get() = link ?: "$artist $title"

@@ -48,7 +48,7 @@ import dev.cued.core.mix.CrossfadeCurve
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel, onOpenReceive: () -> Unit, onStationSetup: () -> Unit) {
+fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel, onOpenReceive: () -> Unit, onStationSetup: () -> Unit, onOpenDesktop: () -> Unit = {}, onOpenFriends: () -> Unit = {}) {
     val context = LocalContext.current
     val pb by vm.playback.collectAsState()
     val ui by vm.ui.collectAsState()
@@ -144,6 +144,12 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
 
         SectionHeader("Receive a share", "Scan a CUEd QR or tap phones")
         TextButton(onClick = onOpenReceive, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Open receiver") }
+
+        SectionHeader("Desktop & friends", "Link the CUEd desktop app for backup, streaming and the relay; manage friends and shared settings")
+        Row(Modifier.padding(horizontal = 8.dp)) {
+            TextButton(onClick = onOpenDesktop) { Text("Desktop") }
+            TextButton(onClick = onOpenFriends) { Text("Friends") }
+        }
 
         SectionHeader("Beta features", "Off by default. Each one needs a short setup before it appears in the side menu.")
         BetaBlock(stvm, onStationSetup)

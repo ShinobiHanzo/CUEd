@@ -71,23 +71,67 @@ class StationCache(private val graph: Graph, private val store: StationStore) {
         }
         if (!networkAllowed()) error("Waiting for Wi-Fi (downloading on mobile data is off in the station settings)")
         set(key, Fetch.Fetching(0f))
-        val s = graph.settings.downloadNow()
-        val dl = NativeDownloader(graph.app, s.spotifyClientId, s.spotifyClientSecret, enrichOnline = false)
         val base = File(dir, safe(key).ifBlank { System.currentTimeMillis().toString() })
-        val file = dl.fetchTemp(t, base) { p -> set(key, Fetch.Fetching(p)) }
+        // The host's desktop offers the audio itself (friend streaming): take that before the downloader.
+        val file = t.stream?.let { url -> runCatching { download(url, base) { p -> set(key, Fetch.Fetching(p)) } }.onFailure { DebugLog.w(TAG, "host stream failed, falling back to the downloader", it) }.getOrNull() }
+            ?: run {
+                val s = graph.settings.downloadNow()
+                val dl = NativeDownloader(graph.app, s.spotifyClientId, s.spotifyClientSecret, enrichOnline = false)
+                dl.fetchTemp(t, base) { p -> set(key, Fetch.Fetching(p)) }
+            }
+        val id = insertCached(file, t)
+        set(key, Fetch.Ready(id, fromLibrary = false))
+        DebugLog.i(TAG, "cached ${t.artist} - ${t.title} (${file.length() / 1024} KB)")
+    }
+
+    /**
+     * Fetches [url] straight into the cache for [t] (a desktop library track,
+     * or a station entry with a host stream) and returns the temporary row id.
+     * Blocks until done; the Desktop screen shows its own progress.
+     */
+    suspend fun fetchFromUrl(t: StationTrack, url: String): Long = withContext(Dispatchers.IO) {
+        val key = keyOf(t)
+        (_status.value[key] as? Fetch.Ready)?.let { ready -> graph.db.tracks().byId(ready.trackId)?.let { if (it.path == null || File(it.path).exists()) return@withContext ready.trackId } }
+        set(key, Fetch.Fetching(0f))
+        try {
+            val file = download(url, File(dir, safe(key).ifBlank { System.currentTimeMillis().toString() })) { p -> set(key, Fetch.Fetching(p)) }
+            val id = insertCached(file, t)
+            set(key, Fetch.Ready(id, fromLibrary = false))
+            id
+        } catch (e: Exception) { set(key, Fetch.Failed(e.message ?: "Fetch failed")); throw e }
+    }
+
+    /** Plain HTTP(S) download of a capability URL to [base] plus the extension the content type implies. */
+    private fun download(url: String, base: File, onProgress: (Float) -> Unit): File {
+        val conn = java.net.URL(url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
+        conn.connectTimeout = 8_000; conn.readTimeout = 120_000
+        try {
+            if (conn.responseCode !in 200..299) error("the host answered HTTP ${conn.responseCode}")
+            val mime = conn.contentType.orEmpty().substringBefore(';').trim()
+            val ext = when (mime) { "audio/mp4", "audio/x-m4a", "audio/aac" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg", "audio/opus" -> "ogg"; "audio/wav" -> "wav"; "audio/webm" -> "webm"; else -> "mp3" }
+            val out = File(base.path + "." + ext)
+            val total = conn.contentLengthLong
+            conn.inputStream.use { src -> out.outputStream().use { dst ->
+                val buf = ByteArray(1 shl 16); var done = 0L
+                while (true) { val n = src.read(buf); if (n < 0) break; dst.write(buf, 0, n); done += n; if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 0.99f)) }
+            } }
+            return out
+        } finally { conn.disconnect() }
+    }
+
+    /** Probes the file, reads its duration and inserts the temporary `station` row. */
+    private suspend fun insertCached(file: File, t: StationTrack): Long {
         val probe = Tagger.probe(file)
         if (!probe.first) { file.delete(); error("The downloaded file isn't playable (${probe.second})") }
         val duration = runCatching {
             val r = MediaMetadataRetriever()
             try { r.setDataSource(file.path); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() } finally { r.release() }
         }.getOrNull() ?: t.durationMs
-        val id = graph.db.tracks().insert(TrackEntity(
+        return graph.db.tracks().insert(TrackEntity(
             mediaStoreId = -System.currentTimeMillis(), uri = Uri.fromFile(file).toString(), path = file.path,
             title = t.title, artist = t.artist, album = t.album, albumId = null, durationMs = duration,
             addedAt = System.currentTimeMillis(), sourceLink = t.link, kind = TrackEntity.KIND_STATION,
         ))
-        set(key, Fetch.Ready(id, fromLibrary = false))
-        DebugLog.i(TAG, "cached ${t.artist} - ${t.title} (${file.length() / 1024} KB)")
     }
 
     /** Moves a cached station track into the music library for good. Returns the library track id. */
@@ -110,13 +154,14 @@ class StationCache(private val graph: Graph, private val store: StationStore) {
         kept?.id
     }
 
-    /** Drops the oldest cached files over the cap, never touching [protect] (now + next). */
+    /** Drops cached files older than 48 hours, then the oldest over the size cap; never touching [protect] (now + next). */
     suspend fun evict(protect: Set<Long>) = withContext(Dispatchers.IO) {
         val cap = store.cacheMb.first().toLong() * 1024 * 1024
         val rows = graph.db.tracks().stationRows().sortedBy { it.addedAt }
         var total = rows.sumOf { it.path?.let { p -> File(p).length() } ?: 0L }
+        val cutoff = System.currentTimeMillis() - KEEP_MS
         for (r in rows) {
-            if (total <= cap) break
+            if (total <= cap && r.addedAt >= cutoff) continue
             if (r.id in protect) continue
             val f = r.path?.let(::File)
             total -= f?.length() ?: 0L
@@ -142,5 +187,9 @@ class StationCache(private val graph: Graph, private val store: StationStore) {
     @Synchronized private fun set(key: String, f: Fetch) { _status.value = _status.value + (key to f) }
     private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
 
-    companion object { private const val TAG = "StationCache" }
+    companion object {
+        private const val TAG = "StationCache"
+        /** Temporary audio, thumbnails and metadata from stations and desktops are kept this long (protocol §10). */
+        const val KEEP_MS = 48L * 3600_000L
+    }
 }
