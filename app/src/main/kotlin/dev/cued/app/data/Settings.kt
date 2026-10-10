@@ -10,7 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import ThemeColors
+import dev.cued.app.ui.theme.ThemeColors
 import dev.cued.core.mix.CrossfadeCurve
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
