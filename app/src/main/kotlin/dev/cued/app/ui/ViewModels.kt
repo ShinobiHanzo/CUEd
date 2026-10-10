@@ -512,6 +512,8 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     // ---- Debug log ----
     val debugLog: StateFlow<Boolean> = graph.settings.debugLog.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     fun setDebugLog(on: Boolean) = viewModelScope.launch { graph.settings.setDebugLog(on) }
+    val devMode: StateFlow<Boolean> = graph.settings.devMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setDevMode(on: Boolean) = viewModelScope.launch { graph.settings.setDevMode(on) }
     fun logRecent() = dev.cued.app.util.DebugLog.recent(60)
     fun logSize() = dev.cued.app.util.DebugLog.sizeBytes()
     fun clearLog() = dev.cued.app.util.DebugLog.clear()

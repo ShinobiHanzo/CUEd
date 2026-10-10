@@ -148,6 +148,9 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
         UpdateBlock(vm)
 
+        SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools.")
+        DevModeBlock(vm)
+
         SectionHeader("Debug log", "Off by default. On: downloads, playback errors, updates and crashes are written to a private file you can share.")
         DebugBlock(vm)
 
@@ -208,6 +211,14 @@ private fun LockScreenBlock(vm: SettingsViewModel) {
         if (awm.isRequestPinAppWidgetSupported) {
             TextButton(onClick = { runCatching { awm.requestPinAppWidget(android.content.ComponentName(context, dev.cued.app.widget.CuedWidgetReceiver::class.java), null, null) } }) { Text("Add widget to home screen") }
         }
+    }
+}
+
+@Composable
+private fun DevModeBlock(vm: SettingsViewModel) {
+    val on by vm.devMode.collectAsState()
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        ToggleRow("Developer mode", if (on) "Termux and companion backends are available on the Downloads screen." else "Only the built-in downloader is shown; any Termux or companion choice from before is ignored until this is on.", on) { vm.setDevMode(it) }
     }
 }
 

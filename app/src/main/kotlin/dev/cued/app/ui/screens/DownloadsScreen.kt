@@ -97,13 +97,18 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
             }
         }
         item {
-            SectionHeader("Backend", "Where spotdl actually runs")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                DownloadBackend.entries.forEachIndexed { i, b ->
-                    SegmentedButton(selected = settings.backend == b, onClick = { vm.setBackend(b) }, shape = SegmentedButtonDefaults.itemShape(i, DownloadBackend.entries.size)) {
-                        Text(when (b) { DownloadBackend.BUILT_IN -> "Built-in"; DownloadBackend.TERMUX -> "Termux"; DownloadBackend.COMPANION -> "Companion" }, maxLines = 1)
+            // Termux and the companion are developer-mode backends (Settings → Developer mode). Off: built-in only, no chooser.
+            if (settings.devMode) {
+                SectionHeader("Backend", "Where spotdl actually runs")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    DownloadBackend.entries.forEachIndexed { i, b ->
+                        SegmentedButton(selected = settings.backend == b, onClick = { vm.setBackend(b) }, shape = SegmentedButtonDefaults.itemShape(i, DownloadBackend.entries.size)) {
+                            Text(when (b) { DownloadBackend.BUILT_IN -> "Built-in"; DownloadBackend.TERMUX -> "Termux"; DownloadBackend.COMPANION -> "Companion" }, maxLines = 1)
+                        }
                     }
                 }
+            } else {
+                SectionHeader("Downloader", "Built in, no setup. Developer mode in Settings adds Termux and companion backends.")
             }
             when (settings.backend) {
                 DownloadBackend.BUILT_IN -> Column(Modifier.padding(16.dp)) {
@@ -152,7 +157,7 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
                 Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted,
             )
             SectionHeader("Lyrics with downloads")
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (settings.devMode) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = settings.generateLrc, onCheckedChange = { vm.setGenerateLrc(it) })
                 Column { Text("Save .lrc lyrics files next to tracks"); Text("Termux/companion only (spotdl --generate-lrc). The built-in downloader relies on the lookup below instead.", style = MaterialTheme.typography.bodySmall, color = Muted) }
             }

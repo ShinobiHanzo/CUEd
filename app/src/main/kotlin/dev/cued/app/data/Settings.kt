@@ -98,6 +98,8 @@ data class DownloadSettings(
     val spotifyClientSecret: String?,
     /** For YouTube links and searches (no Spotify metadata): ask MusicBrainz for album, year, track number and a cover. */
     val enrichOnline: Boolean = true,
+    /** Settings → Developer mode. Off: only the built-in downloader exists, whatever backend was chosen earlier. */
+    val devMode: Boolean = false,
 )
 
 /** Everything user-tunable, persisted with DataStore. Defaults are the values a DJ-ish listener would expect. */
@@ -127,6 +129,7 @@ class Settings(private val context: Context) {
         val visualDelay = intPreferencesKey("visual_delay_ms")
         val bands = intPreferencesKey("spectrum_bands")
         val backend = stringPreferencesKey("download_backend")
+        val devMode = booleanPreferencesKey("dev_mode")
         val companionUrl = stringPreferencesKey("companion_url")
         val format = stringPreferencesKey("download_format")
         val generateLrc = booleanPreferencesKey("download_generate_lrc")
@@ -191,9 +194,17 @@ class Settings(private val context: Context) {
         )
     }
 
+    /** Developer mode: shows the Termux and companion backends and their tools. Off by default. */
+    val devMode: Flow<Boolean> = context.dataStore.data.map { it[K.devMode] ?: false }
+    suspend fun setDevMode(on: Boolean) = context.dataStore.edit { it[K.devMode] = on }
+
     val download: Flow<DownloadSettings> = context.dataStore.data.map { p ->
+        val dev = p[K.devMode] ?: false
+        val chosen = p[K.backend]?.let { runCatching { DownloadBackend.valueOf(it) }.getOrNull() } ?: DownloadBackend.BUILT_IN
         DownloadSettings(
-            backend = p[K.backend]?.let { runCatching { DownloadBackend.valueOf(it) }.getOrNull() } ?: DownloadBackend.BUILT_IN,
+            // Without developer mode the other backends do not exist: every job runs built-in, whatever was chosen before.
+            backend = if (dev) chosen else DownloadBackend.BUILT_IN,
+            devMode = dev,
             companionUrl = p[K.companionUrl] ?: "http://192.168.1.10:8766",
             format = p[K.format] ?: "mp3",
             generateLrc = p[K.generateLrc] ?: false,

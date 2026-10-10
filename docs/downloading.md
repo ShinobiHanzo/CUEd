@@ -31,6 +31,12 @@ playlists, which is what the API keys are for.
 
 `spotdl` is Python; Android won't run it natively. These two backends run it elsewhere.
 
+**They are developer-mode features.** Settings → **Developer mode** is off by default; while it
+is off the Downloads screen shows only the built-in downloader, the backend chooser and the
+Termux/companion test and repair tools are hidden, and every job runs built-in even if Termux or
+the companion had been chosen earlier. Switch it on to get the chooser back; the previous choice
+is remembered.
+
 ## Option A: Termux on the phone
 
 1. Install Termux from F-Droid (the Play Store build is abandoned).
