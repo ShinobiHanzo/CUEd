@@ -67,6 +67,7 @@ class Graph(val app: Application) {
     val downloads: DownloadManager by lazy { DownloadManager(app, this) }
     val shareServer: ShareServer by lazy { ShareServer(app, this) }
     val carDetector: CarModeDetector by lazy { CarModeDetector(app) }
+    val speedMonitor: dev.cued.app.playback.SpeedMonitor by lazy { dev.cued.app.playback.SpeedMonitor(app) }
     val lyrics: LyricsRepository by lazy { LyricsRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val genres: GenreRepository by lazy { GenreRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val feed: dev.cued.app.feed.FeedRepository by lazy { dev.cued.app.feed.FeedRepository(this) }

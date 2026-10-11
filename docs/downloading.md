@@ -156,5 +156,6 @@ Share a Spotify, YouTube or Deezer **playlist** link and CUEd does more than que
 creates a playlist of the same name (or reuses one that already has that name) and gives every
 track its slot in the original order. Tracks the library already has go in at once without a
 download; the rest join the playlist the moment their file lands, so a half-finished import is
-already a playable playlist that fills in as the queue drains. Album links are not turned into
-playlists: albums group themselves by their tags.
+already a playable playlist that fills in as the queue drains. Album links get the same treatment
+as an *album playlist* named "Artist – Album", so a shared album is one tap away in Playlists as
+well as grouped under its tags in the library.

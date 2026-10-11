@@ -35,7 +35,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
         when {
             link.platform == Platform.SPOTIFY && link.type == LinkType.ALBUM && id != null -> {
                 val c = spotify.album(id)
-                LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Album \"${c.name}\": ${c.tracks.size} tracks")
+                val albumArtist = c.tracks.firstOrNull()?.let { it.albumArtist ?: it.artists.firstOrNull() }
+                LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Album \"${c.name}\": ${c.tracks.size} tracks", playlistName = listOfNotNull(albumArtist, c.name).joinToString(" – "))
             }
             link.platform == Platform.SPOTIFY && link.type == LinkType.PLAYLIST && id != null -> {
                 val c = spotify.playlist(id)

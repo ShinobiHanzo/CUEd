@@ -260,6 +260,10 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     fun setCarMode(on: Boolean) { carOverride.value = null; viewModelScope.launch { graph.settings.setCarMode(on) } }
     fun setAutoCarMode(on: Boolean) = viewModelScope.launch { graph.settings.setAutoCarMode(on) }
     fun exitCarModeForNow() { carOverride.value = false; viewModelScope.launch { graph.settings.setCarMode(false) } }
+    /** GPS speed while the moving-detector runs (km/h), null otherwise. */
+    val speedKmh: StateFlow<Float?> get() = graph.speedMonitor.speedKmh
+    fun startSpeedMonitor() = graph.speedMonitor.start()
+    fun stopSpeedMonitor() = graph.speedMonitor.stop()
 
     // ---- Lyrics ----
     val showLyrics = MutableStateFlow(false)
@@ -477,6 +481,11 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     val playback: StateFlow<PlaybackSettings> = graph.settings.playback.stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackSettings.DEFAULT)
     val ui: StateFlow<UiSettings> = graph.settings.ui.stateIn(viewModelScope, SharingStarted.Eagerly, UiSettings(ScrubberMode.REACTIVE_SPECTROGRAM, 120, 48))
     val sharePort: StateFlow<Int> = graph.settings.sharePort.stateIn(viewModelScope, SharingStarted.Eagerly, 8765)
+    val car: StateFlow<CarSettings> = graph.settings.car.stateIn(viewModelScope, SharingStarted.Eagerly, CarSettings(false, true))
+    fun setAutoCarMode(on: Boolean) = viewModelScope.launch { graph.settings.setAutoCarMode(on) }
+    fun setCarSpeedTrigger(on: Boolean) = viewModelScope.launch { graph.settings.setCarSpeedTrigger(on) }
+    fun setCarSpeedKmh(kmh: Int) = viewModelScope.launch { graph.settings.setCarSpeedKmh(kmh) }
+    fun hasLocationPermission(): Boolean = graph.speedMonitor.hasPermission()
     val analysisPending: StateFlow<Int> = graph.analysis.pending
 
     fun setCrossfadeEnabled(on: Boolean) = viewModelScope.launch { graph.settings.setCrossfadeEnabled(on) }

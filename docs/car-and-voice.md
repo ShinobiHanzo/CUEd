@@ -61,3 +61,12 @@ Examples that work:
 | "car mode", "exit car mode", "louder", "quieter", "what's playing" | misc |
 
 In car mode replies are also spoken through the system TTS.
+
+## Car mode when moving
+
+Settings → Car mode → *Offer car mode when moving*. With the location permission granted, CUEd
+reads GPS speed while the app is on screen (plain Android location, no Play services, nothing
+leaves the phone, and nothing runs when the app is not in front). Two consecutive fixes above the
+threshold (30 km/h by default, 10 to 80 in Settings) open a prompt: *Switching to car mode in 10 s*.
+Tap **Stay** and it keeps quiet for half an hour, which covers passengers, buses and trains; tap
+**Car mode now** or do nothing and the big-button screen comes on. Leaving car mode works as before.

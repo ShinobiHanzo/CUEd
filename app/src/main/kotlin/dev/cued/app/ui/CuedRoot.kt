@@ -99,7 +99,11 @@ import dev.cued.app.ui.screens.TrackDetailsScreen
 import dev.cued.core.share.SharePayload
 import java.net.URLEncoder
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 
 /** Something the activity received from outside: a share payload, a link to download, or "open now playing". */
 sealed class Inbound {
@@ -243,6 +247,28 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val liveStations by stvm.live.collectAsState()
     val tunedStation by stvm.tuned.collectAsState()
     androidx.compose.runtime.DisposableEffect(Unit) { pvm.uiVisible.value = true; onDispose { pvm.uiVisible.value = false } }
+
+    // Car mode when moving: GPS speed on the phone only, while this screen is in front. Two fixes over the
+    // threshold open a ten-second prompt; no answer means car mode. "Stay" snoozes it for half an hour.
+    val speedKmh by pvm.speedKmh.collectAsState()
+    var movingPrompt by remember { mutableStateOf(false) }
+    var movingSnoozedUntil by remember { mutableStateOf(0L) }
+    var fastFixes by remember { mutableStateOf(0) }
+    androidx.compose.runtime.DisposableEffect(carSettings.speedTrigger) {
+        if (carSettings.speedTrigger) pvm.startSpeedMonitor()
+        onDispose { pvm.stopSpeedMonitor() }
+    }
+    LaunchedEffect(speedKmh, carMode, carSettings.speedTrigger) {
+        val s = speedKmh
+        if (!carSettings.speedTrigger || carMode || s == null) { fastFixes = 0; return@LaunchedEffect }
+        fastFixes = if (s >= carSettings.speedKmh) fastFixes + 1 else 0
+        if (fastFixes >= 2 && !movingPrompt && System.currentTimeMillis() > movingSnoozedUntil) movingPrompt = true
+    }
+    if (movingPrompt) MovingPrompt(
+        speedKmh = speedKmh ?: 0f,
+        onStay = { movingPrompt = false; fastFixes = 0; movingSnoozedUntil = System.currentTimeMillis() + 30 * 60_000L },
+        onCarMode = { movingPrompt = false; fastFixes = 0; pvm.setCarMode(true) },
+    )
 
     if (carMode) {
         CarModeScreen(
@@ -531,4 +557,21 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onUnlockGenres = { lvm.unlockGenres(tr.id) },
         )
     }
+}
+
+/** "You seem to be driving": ten seconds to decline, then car mode. Big buttons, because the point is not to look. */
+@Composable
+private fun MovingPrompt(speedKmh: Float, onStay: () -> Unit, onCarMode: () -> Unit) {
+    var left by remember { mutableStateOf(10) }
+    LaunchedEffect(Unit) {
+        while (left > 0) { delay(1_000); left -= 1 }
+        onCarMode()
+    }
+    AlertDialog(
+        onDismissRequest = onStay,
+        title = { Text("Moving at about ${speedKmh.toInt()} km/h") },
+        text = { Text("Switching to car mode in $left s. Tap Stay if you are a passenger or on a train; the question will not come back for half an hour.") },
+        confirmButton = { Button(onClick = onCarMode) { Text("Car mode now") } },
+        dismissButton = { TextButton(onClick = onStay) { Text("Stay") } },
+    )
 }

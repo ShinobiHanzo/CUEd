@@ -94,6 +94,9 @@ data class CarSettings(
     val carMode: Boolean,
     /** Enter car mode by itself when Android reports the car UI mode (dock, Android Auto on older versions). */
     val autoCarMode: Boolean,
+    /** Offer car mode when GPS says the phone is moving faster than [speedKmh] (on-device only, while CUEd is on screen). */
+    val speedTrigger: Boolean = false,
+    val speedKmh: Int = 30,
 )
 
 data class UiSettings(
@@ -142,6 +145,8 @@ class Settings(private val context: Context) {
         val lockScreen = booleanPreferencesKey("lock_screen_player")
         val carMode = booleanPreferencesKey("car_mode")
         val autoCarMode = booleanPreferencesKey("auto_car_mode")
+        val carSpeedTrigger = booleanPreferencesKey("car_speed_trigger")
+        val carSpeedKmh = intPreferencesKey("car_speed_kmh")
         val curve = stringPreferencesKey("crossfade_curve")
         val tempoMatch = booleanPreferencesKey("tempo_match")
         val maxStretch = floatPreferencesKey("max_stretch_percent")
@@ -214,7 +219,7 @@ class Settings(private val context: Context) {
     suspend fun setDebugLog(on: Boolean) = context.dataStore.edit { it[K.debugLog] = on }
 
     val car: Flow<CarSettings> = context.dataStore.data.map { p ->
-        CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true)
+        CarSettings(carMode = p[K.carMode] ?: false, autoCarMode = p[K.autoCarMode] ?: true, speedTrigger = p[K.carSpeedTrigger] ?: false, speedKmh = p[K.carSpeedKmh] ?: 30)
     }
 
     val ui: Flow<UiSettings> = context.dataStore.data.map { p ->
@@ -280,6 +285,8 @@ class Settings(private val context: Context) {
     suspend fun setSilenceToleranceMs(ms: Int) = context.dataStore.edit { it[K.silenceToleranceMs] = ms.coerceIn(100, 5_000) }
     suspend fun setCarMode(on: Boolean) = context.dataStore.edit { it[K.carMode] = on }
     suspend fun setAutoCarMode(on: Boolean) = context.dataStore.edit { it[K.autoCarMode] = on }
+    suspend fun setCarSpeedTrigger(on: Boolean) = context.dataStore.edit { it[K.carSpeedTrigger] = on }
+    suspend fun setCarSpeedKmh(kmh: Int) = context.dataStore.edit { it[K.carSpeedKmh] = kmh.coerceIn(10, 120) }
     suspend fun setCurve(curve: CrossfadeCurve) = context.dataStore.edit { it[K.curve] = curve.name }
     suspend fun setTempoMatch(on: Boolean) = context.dataStore.edit { it[K.tempoMatch] = on }
     suspend fun setMaxStretchPercent(v: Float) = context.dataStore.edit { it[K.maxStretch] = v.coerceIn(1f, 16f) }

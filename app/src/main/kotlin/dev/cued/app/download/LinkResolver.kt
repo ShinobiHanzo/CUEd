@@ -30,7 +30,7 @@ class LinkResolver(private val userAgent: String) {
 
     sealed class Result {
         data class Direct(val source: String, val note: String? = null) : Result()
-        /** [playlistName] is set when the link was a playlist: the downloader rebuilds it as a CUEd playlist of that name. */
+        /** [playlistName] is set for playlists and albums: the downloader rebuilds the collection as a CUEd playlist of that name (albums as "Artist – Album"). */
         data class Expanded(val items: List<Item>, val note: String, val playlistName: String? = null) : Result()
         data class Unsupported(val reason: String) : Result()
     }
@@ -103,7 +103,7 @@ class LinkResolver(private val userAgent: String) {
                 }
                 next = page["next"]?.jsonPrimitive?.content
             }
-            if (items.isEmpty()) null else Result.Expanded(items, "Deezer $kind \"$name\": ${items.size} tracks", playlistName = if (kind.equals("playlist", ignoreCase = true)) name else null)
+            if (items.isEmpty()) null else Result.Expanded(items, "Deezer $kind \"$name\": ${items.size} tracks", playlistName = if (kind.equals("playlist", ignoreCase = true)) name else listOfNotNull(albumArtist, name).joinToString(" – "))
         }.onFailure { Log.w(TAG, "deezer: ${it.message}") }.getOrNull()
     }
 

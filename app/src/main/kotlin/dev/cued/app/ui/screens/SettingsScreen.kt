@@ -178,6 +178,19 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         SectionHeader("Beta features", "Off by default. Each one needs a short setup before it appears in the side menu.")
         BetaBlock(stvm, onStationSetup)
 
+        val car by vm.car.collectAsState()
+        val locationLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) vm.setCarSpeedTrigger(true)
+        }
+        SectionHeader("Car mode", "The big-button screen. Also in the side menu, and by voice.")
+        ToggleRow("Enter when Android reports a car", "Car dock or head unit that switches the UI mode", car.autoCarMode) { vm.setAutoCarMode(it) }
+        ToggleRow(
+            "Offer car mode when moving",
+            "GPS speed, read on this phone only and only while CUEd is on screen. Above the threshold a prompt gives you ten seconds to say no; otherwise car mode comes on. Needs the location permission.",
+            car.speedTrigger,
+        ) { on -> if (!on) vm.setCarSpeedTrigger(false) else if (vm.hasLocationPermission()) vm.setCarSpeedTrigger(true) else locationLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION) }
+        LabeledSlider("Speed threshold", "${car.speedKmh} km/h", car.speedKmh.toFloat(), 10f..80f, 13, enabled = car.speedTrigger) { vm.setCarSpeedKmh(it.toInt()) }
+
         SectionHeader("Lock screen and widgets", "CUEd's own player above the keyguard, and a resizable home-screen widget")
         LockScreenBlock(vm)
 

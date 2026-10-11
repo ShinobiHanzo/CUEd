@@ -26,6 +26,9 @@
 
     <!-- NFC tap-to-share -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Optional: car mode when moving. GPS speed is read on the phone only while CUEd is on screen; nothing leaves the device. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Desktop link: reads from outside the LAN are signed with a biometric-gated key (CUEd-desktop protocol §7) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
