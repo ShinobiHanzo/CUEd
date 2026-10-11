@@ -1,5 +1,6 @@
 package dev.cued.app.genre
 
+import dev.cued.core.feed.ReleaseFeed
 import dev.cued.core.genre.GenreNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -105,7 +106,83 @@ class MusicBrainzClient(private val userAgent: String) {
             .flatMap { GenreNormalizer.normalize(it.name) }.distinct()
     }
 
+    // ---- release feed ---------------------------------------------------------------------
+
+    @Serializable private data class ArtistHit(val id: String, val name: String = "", val score: Int = 0, val disambiguation: String = "")
+    @Serializable private data class ArtistSearch(val artists: List<ArtistHit> = emptyList())
+    @Serializable private data class ReleaseGroup(
+        val id: String, val title: String = "", @SerialName("primary-type") val primaryType: String? = null,
+        @SerialName("secondary-types") val secondaryTypes: List<String> = emptyList(), @SerialName("first-release-date") val firstReleaseDate: String = "",
+    )
+    @Serializable private data class ReleaseGroupBrowse(@SerialName("release-group-count") val count: Int = 0, @SerialName("release-groups") val releaseGroups: List<ReleaseGroup> = emptyList())
+    @Serializable private data class RecordingRef(val id: String = "", val title: String = "", val length: Long? = null)
+    @Serializable private data class BrowseTrack(
+        val position: Int = 0, val number: String? = null, val title: String = "", val length: Long? = null, val recording: RecordingRef? = null,
+        @SerialName("artist-credit") val artistCredit: List<Credit> = emptyList(),
+    )
+    @Serializable private data class BrowseMedium(val position: Int = 0, val format: String? = null, @SerialName("track-count") val trackCount: Int = 0, val tracks: List<BrowseTrack> = emptyList())
+    @Serializable private data class BrowseRelease(
+        val id: String, val title: String = "", val status: String? = null, val date: String? = null, val country: String? = null,
+        val media: List<BrowseMedium> = emptyList(), @SerialName("artist-credit") val artistCredit: List<Credit> = emptyList(),
+    )
+    @Serializable private data class ReleaseBrowse(val releases: List<BrowseRelease> = emptyList())
+
+    /** One release group: an album, EP or single, with the date MusicBrainz knows (possibly just a year). */
+    data class FeedRelease(val id: String, val title: String, val type: String, val date: String)
+    data class FeedTrack(val position: Int, val title: String, val artist: String, val durationMs: Long, val recordingId: String?)
+
+    /** The MusicBrainz artist behind a name, or null when no candidate is convincing. */
+    suspend fun findArtist(name: String): ReleaseFeed.ArtistCandidate? = withContext(Dispatchers.IO) {
+        val q = "artist:\"${esc(name)}\""
+        val res = get("$BASE/artist?query=${enc(q)}&fmt=json&limit=5")?.let { runCatching { json.decodeFromString<ArtistSearch>(it) }.getOrNull() } ?: return@withContext null
+        ReleaseFeed.pickArtist(name, res.artists.map { ReleaseFeed.ArtistCandidate(it.id, it.name, it.score, it.disambiguation) })
+    }
+
+    /** Every album, EP and single of an artist (compilations, live and remix sets left out), up to 300. */
+    suspend fun releaseGroups(artistMbid: String): List<FeedRelease> = withContext(Dispatchers.IO) {
+        val out = ArrayList<FeedRelease>()
+        var offset = 0
+        while (true) {
+            val page = get("$BASE/release-group?artist=$artistMbid&type=album%7Cep%7Csingle&limit=100&offset=$offset&fmt=json")
+                ?.let { runCatching { json.decodeFromString<ReleaseGroupBrowse>(it) }.getOrNull() } ?: break
+            for (rg in page.releaseGroups) {
+                val type = ReleaseFeed.typeLabel(rg.primaryType, rg.secondaryTypes) ?: continue
+                out += FeedRelease(rg.id, rg.title, type, rg.firstReleaseDate)
+            }
+            offset += page.releaseGroups.size
+            if (page.releaseGroups.isEmpty() || offset >= page.count || offset >= 300) break
+        }
+        out
+    }
+
+    /** The track list of a release group, read from its best (official, earliest) release. */
+    suspend fun releaseTracks(releaseGroupId: String, fallbackArtist: String): List<FeedTrack> = withContext(Dispatchers.IO) {
+        val res = get("$BASE/release?release-group=$releaseGroupId&inc=recordings+artist-credits&limit=25&fmt=json")
+            ?.let { runCatching { json.decodeFromString<ReleaseBrowse>(it) }.getOrNull() } ?: return@withContext emptyList()
+        fun rank(r: BrowseRelease): Int {
+            var s = 0
+            if (r.status?.equals("Official", true) != true) s += 4
+            if (r.country != null && r.country !in setOf("XW", "US", "GB", "XE")) s += 1
+            return s
+        }
+        val best = res.releases.filter { it.media.any { m -> m.tracks.isNotEmpty() } }
+            .sortedWith(compareBy<BrowseRelease> { rank(it) }.thenBy { it.date ?: "9999" }).firstOrNull() ?: return@withContext emptyList()
+        val releaseArtist = best.artistCredit.joinToString(", ") { it.artist.name }.ifBlank { fallbackArtist }
+        val out = ArrayList<FeedTrack>()
+        var pos = 0
+        for (m in best.media.sortedBy { it.position }) for (t in m.tracks.sortedBy { it.position }) {
+            pos += 1
+            val credit = t.artistCredit.joinToString(", ") { it.artist.name }.ifBlank { releaseArtist }
+            out += FeedTrack(pos, t.title.ifBlank { t.recording?.title.orEmpty() }, credit, t.length ?: t.recording?.length ?: 0L, t.recording?.id?.takeIf { it.isNotBlank() })
+        }
+        out
+    }
+
+    /** Cover Art Archive front cover for a release group (redirects; may 404 for obscure releases). */
+    fun coverUrl(releaseGroupId: String) = "https://coverartarchive.org/release-group/$releaseGroupId/front-250"
+
     private fun get(url: String): String? {
+        throttle()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000; conn.readTimeout = 15_000
         conn.setRequestProperty("User-Agent", userAgent)
@@ -123,8 +200,19 @@ class MusicBrainzClient(private val userAgent: String) {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
     private fun esc(s: String) = s.replace("\"", "\\\"")
 
+    /** MusicBrainz allows one request per second per client; every caller in the app shares this gate. */
+    private fun throttle() {
+        synchronized(LOCK) {
+            val wait = lastRequestAt + RATE_MS - System.currentTimeMillis()
+            if (wait > 0) Thread.sleep(wait)
+            lastRequestAt = System.currentTimeMillis()
+        }
+    }
+
     companion object {
         const val BASE = "https://musicbrainz.org/ws/2"
         const val RATE_MS = 1_100L
+        private val LOCK = Any()
+        @Volatile private var lastRequestAt = 0L
     }
 }

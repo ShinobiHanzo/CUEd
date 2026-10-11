@@ -69,6 +69,7 @@ class Graph(val app: Application) {
     val carDetector: CarModeDetector by lazy { CarModeDetector(app) }
     val lyrics: LyricsRepository by lazy { LyricsRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
     val genres: GenreRepository by lazy { GenreRepository(app, db, settings, appScope, BuildConfig.VERSION_NAME) }
+    val feed: dev.cued.app.feed.FeedRepository by lazy { dev.cued.app.feed.FeedRepository(this) }
     val updates: UpdateManager by lazy { UpdateManager(app, settings, appScope) }
     val bugs: BugReporter by lazy { BugReporter(app, settings, appScope) }
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

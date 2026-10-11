@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -45,6 +48,7 @@ import dev.cued.app.ui.components.AlbumCard
 import dev.cued.app.ui.components.EmptyHint
 import dev.cued.app.ui.components.SectionHeader
 import dev.cued.app.ui.components.TrackRow
+import dev.cued.app.ui.theme.Amber
 import dev.cued.app.ui.theme.Muted
 import dev.cued.core.library.Discography
 
@@ -62,6 +66,9 @@ fun ArtistScreen(
     onPlay: (List<TrackEntity>, Int) -> Unit,
     onTrackMore: (TrackEntity) -> Unit,
     onOpenAlbum: (String, String) -> Unit,
+    followed: Boolean = false,
+    onToggleFollow: (() -> Unit)? = null,
+    onOpenFeed: (() -> Unit)? = null,
 ) {
     val index by vm.discography.collectAsState()
     val genreMap by vm.genreMap.collectAsState()
@@ -72,7 +79,15 @@ fun ArtistScreen(
     fun List<TrackEntity>.hitTracks() = if (q.isBlank()) this else filter { it.title.contains(q, true) || it.album.contains(q, true) }
 
     Scaffold(topBar = {
-        TopAppBar(title = { Text(name) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } })
+        TopAppBar(
+            title = { Text(name) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
+            actions = {
+                // The release feed: follow the artist (home page row) and see everything they have put out.
+                onToggleFollow?.let { toggle -> IconButton(onClick = toggle) { Icon(if (followed) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = if (followed) "Unfollow" else "Follow", tint = if (followed) Amber else Muted) } }
+                onOpenFeed?.let { open -> TextButton(onClick = open) { Text("Releases") } }
+            },
+        )
     }) { pad ->
         if (artist == null) { Column(Modifier.padding(pad).fillMaxSize()) { EmptyHint("No tracks by $name in the library") }; return@Scaffold }
         val albums = artist.albums.hitAlbums()

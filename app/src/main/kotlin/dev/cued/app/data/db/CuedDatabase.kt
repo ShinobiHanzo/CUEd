@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TrackEntity::class, TrackGenreEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, PlayEventEntity::class, DownloadJobEntity::class, LyricsEntity::class],
-    version = 6,
+    entities = [TrackEntity::class, TrackGenreEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, PlayEventEntity::class, DownloadJobEntity::class, LyricsEntity::class, FeedArtistEntity::class, ReleaseEntity::class, ReleaseTrackEntity::class],
+    version = 7,
     exportSchema = true,
 )
 abstract class CuedDatabase : RoomDatabase() {
@@ -18,6 +18,7 @@ abstract class CuedDatabase : RoomDatabase() {
     abstract fun playEvents(): PlayEventDao
     abstract fun downloads(): DownloadJobDao
     abstract fun lyrics(): LyricsDao
+    abstract fun feed(): FeedDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -55,9 +56,19 @@ abstract class CuedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `feed_artists` (`name` TEXT NOT NULL, `mbid` TEXT, `followed` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `lastRefreshAt` INTEGER NOT NULL, `lastError` TEXT, PRIMARY KEY(`name`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `releases` (`id` TEXT NOT NULL, `artist` TEXT NOT NULL, `artistMbid` TEXT NOT NULL, `title` TEXT NOT NULL, `type` TEXT NOT NULL, `date` TEXT NOT NULL, `dateMs` INTEGER NOT NULL, `coverUrl` TEXT, `fetchedAt` INTEGER NOT NULL, `tracksFetchedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_releases_artist` ON `releases` (`artist`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_releases_dateMs` ON `releases` (`dateMs`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `release_tracks` (`releaseId` TEXT NOT NULL, `position` INTEGER NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `durationMs` INTEGER NOT NULL, `recordingId` TEXT, PRIMARY KEY(`releaseId`, `position`), FOREIGN KEY(`releaseId`) REFERENCES `releases`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+            }
+        }
+
         fun build(context: Context): CuedDatabase =
             Room.databaseBuilder(context, CuedDatabase::class.java, "cued.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
     }

@@ -136,6 +136,12 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
             }
         }
 
+        val feed by vm.feed.collectAsState()
+        SectionHeader("New releases & artist feeds", "MusicBrainz (open data, no key) lists what your artists put out; audio comes from YouTube Music only when you play or download a track")
+        ToggleRow("Show on the home page", "New releases from artists you play or follow, and your followed artists' pages", feed.enabled) { vm.setFeedEnabled(it) }
+        ToggleRow("Refresh on mobile data", "Off: feeds update on Wi-Fi only. A few small requests per artist, about once a day.", feed.onMobile) { vm.setFeedOnMobile(it) }
+        TextButton(onClick = { vm.refreshFeed() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Check for new releases now") }
+
         SectionHeader("Library", if (pending > 0) "$pending track(s) waiting for analysis" else "Tempo + spectrogram analysis runs on-device, one track at a time")
         Row(Modifier.padding(horizontal = 8.dp)) {
             TextButton(onClick = { vm.rescan() }) { Text("Rescan music") }

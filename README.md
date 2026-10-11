@@ -17,6 +17,7 @@ No accounts. No telemetry. No models. Every recommendation is a rule you can rea
 | Silence skip | Optional: cuts quiet stretches longer than a tolerance (threshold in dBFS), position stays accurate because dropped frames are reported to the audio sink | `app/.../playback/SilenceSkipProcessor.kt` |
 | Library browsing | Artists (A–Z rail) → artist page (albums, singles, loose tracks, appears on) → numbered album page; Albums grid; Tracks; Genres. Search narrows the open view | `core/library/Discography.kt`, `ui/screens/ArtistScreen.kt`, `AlbumScreen.kt` |
 | Desktop client | Pair with [CUEd-desktop](https://github.com/ShinobiHanzo/CUEd-desktop) over a QR code (join / keep / separate accounts); content-addressed backup, streaming the desktop's library, a relay of your own (off by default), friends over QR / NFC / shares with a biometric-locked read path from outside the house | `app/.../desktop`, `core/.../desktop`, `ui/screens/DesktopScreens.kt`, `ui/screens/FriendsScreen.kt` |
+| New releases & artist feeds | Home-page rows from MusicBrainz: what the artists you play or follow put out (last 120 days), and each followed artist's RSS-like page of releases. Tracks you lack show metadata and cover; tap to stream at once while the file downloads in the background | `app/.../feed`, `core/.../feed/ReleaseFeed.kt`, `ui/screens/FeedScreens.kt` |
 | Developer mode | Settings switch, off by default. On: Termux and companion download backends with their tools, and *Theme colours* (the nine colours the app is drawn with, same keys as the desktop client, with presets); off: built-in downloader only and the standard look | `data/Settings.kt`, `ui/theme/Theme.kt`, `ui/screens/SettingsScreen.kt` |
 | Bug reports | Settings → Report a bug (also on failed downloads and after a crash): description + redacted recent debug log → public GitHub issue, via the API with a token or the prefilled browser form without one | `support/BugReporter.kt` |
 | Car mode | Sidebar toggle (or automatic on car UI mode): one screen of oversized controls, quick-play tiles, voice button, spoken replies. Android Auto browse tree via `MediaLibraryService` | `ui/screens/CarModeScreen.kt`, `playback/LibraryTree.kt` |
@@ -66,6 +67,7 @@ APK and publishes it on the Releases page. `.github/workflows/pages.yml` publish
 - [Downloading with spotdl](docs/downloading.md): Termux vs companion setup
 - [Sharing](docs/sharing.md): QR / NFC / local server protocol and what leaves the phone (nothing)
 - [Stations](docs/stations.md): broadcast what you play to followers anywhere; keys, relays, the listener's cache
+- [New releases and artist feeds](docs/feeds.md): MusicBrainz-fed home rows, artist pages, stream-while-downloading
 - [Desktop client](docs/desktop.md): pair with [CUEd-desktop](https://github.com/ShinobiHanzo/CUEd-desktop) over a QR code for backup, streaming, downloads and a relay of your own
 - [Car mode and voice](docs/car-and-voice.md): sidebar car mode, Android Auto, what you can say
 - [Widgets and the lock-screen player](docs/widgets-and-lockscreen.md): resizable home-screen widget, CUEd's own player above the keyguard

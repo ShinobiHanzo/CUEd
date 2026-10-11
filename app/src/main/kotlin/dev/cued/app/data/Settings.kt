@@ -53,6 +53,14 @@ data class PlaybackSettings(
     }
 }
 
+data class FeedSettings(
+    /** Show New releases and Your artists on the home page and keep them fresh. */
+    val enabled: Boolean,
+    /** Refresh on mobile data too; off = Wi-Fi only. */
+    val onMobile: Boolean,
+    val lastRefreshAt: Long,
+)
+
 data class LyricsSettings(
     /** Allowed to ask lrclib.net when nothing is embedded or beside the file. */
     val fetchOnline: Boolean,
@@ -115,6 +123,9 @@ class Settings(private val context: Context) {
         val lyricsOnline = booleanPreferencesKey("lyrics_online")
         val lyricsAuto = booleanPreferencesKey("lyrics_auto")
         val genresOnline = booleanPreferencesKey("genres_online")
+        val feedEnabled = booleanPreferencesKey("feed_enabled")
+        val feedOnMobile = booleanPreferencesKey("feed_on_mobile")
+        val feedLastRefresh = longPreferencesKey("feed_last_refresh")
         val updatesAuto = booleanPreferencesKey("updates_auto")
         val updatesLastCheck = longPreferencesKey("updates_last_check")
         val githubToken = stringPreferencesKey("github_token")
@@ -165,6 +176,13 @@ class Settings(private val context: Context) {
     suspend fun lyricsNow() = lyrics.first()
     suspend fun setLyricsOnline(on: Boolean) = context.dataStore.edit { it[K.lyricsOnline] = on }
     suspend fun setLyricsAuto(on: Boolean) = context.dataStore.edit { it[K.lyricsAuto] = on }
+
+    /** New releases and artist feeds (MusicBrainz metadata; audio only when a track is played or downloaded). */
+    val feed: Flow<FeedSettings> = context.dataStore.data.map { p -> FeedSettings(enabled = p[K.feedEnabled] ?: true, onMobile = p[K.feedOnMobile] ?: false, lastRefreshAt = p[K.feedLastRefresh] ?: 0L) }
+    suspend fun feedNow() = feed.first()
+    suspend fun setFeedEnabled(on: Boolean) = context.dataStore.edit { it[K.feedEnabled] = on }
+    suspend fun setFeedOnMobile(on: Boolean) = context.dataStore.edit { it[K.feedOnMobile] = on }
+    suspend fun setFeedRefreshedAt(ms: Long) = context.dataStore.edit { it[K.feedLastRefresh] = ms }
 
     val genres: Flow<GenreSettings> = context.dataStore.data.map { p -> GenreSettings(online = p[K.genresOnline] ?: false) }
     suspend fun genresNow() = genres.first()

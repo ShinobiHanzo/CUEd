@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
+import dev.cued.app.ui.FeedViewModel
 import dev.cued.app.ui.LibraryViewModel
 import dev.cued.app.ui.components.AlbumArt
 import dev.cued.app.ui.components.EmptyHint
@@ -43,9 +44,12 @@ import dev.cued.app.ui.theme.Muted
 @Composable
 fun HomeScreen(
     vm: LibraryViewModel,
+    fvm: FeedViewModel,
     onPlay: (List<TrackEntity>, Int) -> Unit,
     onOpenList: (SmartList) -> Unit,
     onTrackMore: (TrackEntity) -> Unit,
+    onOpenRelease: (String) -> Unit = {},
+    onOpenArtistFeed: (String) -> Unit = {},
     updateAvailable: String? = null,
     onUpdate: () -> Unit = {},
     crashed: Boolean = false,
@@ -55,6 +59,7 @@ fun HomeScreen(
     val lists by vm.smartLists.collectAsState()
     val scanning by vm.scanning.collectAsState()
     val pending by vm.analysisPending.collectAsState()
+    val feedSettings by fvm.settings.collectAsState()
 
     LazyColumn(Modifier.fillMaxWidth()) {
         if (crashed) item {
@@ -85,6 +90,10 @@ fun HomeScreen(
                 if (scanning) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else IconButton(onClick = { vm.rescan() }) { Icon(Icons.Default.Refresh, contentDescription = "Rescan") }
             }
+        }
+        if (feedSettings.enabled) {
+            item(key = "feed-new") { NewReleasesRow(fvm, onOpenRelease) }
+            item(key = "feed-artists") { FollowedArtistsRow(fvm, onOpenArtistFeed) }
         }
         for (kind in SmartList.entries) {
             val tracks = lists[kind].orEmpty()

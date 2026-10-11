@@ -71,6 +71,12 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE kind = 'station'")
     suspend fun stationRows(): List<TrackEntity>
 
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' AND title = :title COLLATE NOCASE AND artist = :artist COLLATE NOCASE LIMIT 1")
+    suspend fun musicByTitleArtist(title: String, artist: String): TrackEntity?
+
+    @Query("SELECT * FROM tracks WHERE missing = 0 AND kind = 'music' AND (artist LIKE '%' || :artist || '%' OR albumArtist LIKE '%' || :artist || '%')")
+    suspend fun musicByArtist(artist: String): List<TrackEntity>
+
     @Query("SELECT * FROM tracks WHERE addedAt >= :since AND missing = 0")
     suspend fun addedSince(since: Long): List<TrackEntity>
 
@@ -266,4 +272,81 @@ interface LyricsDao {
 
     @Query("SELECT COUNT(*) FROM lyrics WHERE source != 'none'")
     fun observeCount(): Flow<Int>
+}
+
+@Dao
+interface FeedDao {
+    @Query("SELECT * FROM feed_artists WHERE followed = 1 ORDER BY name COLLATE NOCASE")
+    fun observeFollowed(): Flow<List<FeedArtistEntity>>
+
+    @Query("SELECT * FROM feed_artists")
+    suspend fun allArtists(): List<FeedArtistEntity>
+
+    @Query("SELECT * FROM feed_artists WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun artist(name: String): FeedArtistEntity?
+
+    @Query("SELECT * FROM feed_artists WHERE name = :name COLLATE NOCASE LIMIT 1")
+    fun observeArtist(name: String): Flow<FeedArtistEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertArtist(a: FeedArtistEntity)
+
+    @Query("UPDATE feed_artists SET followed = :on WHERE name = :name COLLATE NOCASE")
+    suspend fun setFollowed(name: String, on: Boolean)
+
+    @Query("UPDATE feed_artists SET mbid = :mbid, lastRefreshAt = :at, lastError = :error WHERE name = :name")
+    suspend fun markRefreshed(name: String, mbid: String?, at: Long, error: String?)
+
+    @Query("DELETE FROM feed_artists WHERE name = :name COLLATE NOCASE")
+    suspend fun deleteArtist(name: String)
+
+    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND dateMs <= :untilMs AND artist IN (SELECT name FROM feed_artists) ORDER BY dateMs DESC, fetchedAt DESC LIMIT :limit")
+    fun observeRecent(sinceMs: Long, untilMs: Long, limit: Int): Flow<List<ReleaseEntity>>
+
+    @Query("SELECT * FROM releases WHERE artist = :artist COLLATE NOCASE ORDER BY dateMs DESC, title COLLATE NOCASE")
+    fun observeReleases(artist: String): Flow<List<ReleaseEntity>>
+
+    @Query("SELECT * FROM releases WHERE artist = :artist COLLATE NOCASE ORDER BY dateMs DESC LIMIT 1")
+    fun observeLatest(artist: String): Flow<ReleaseEntity?>
+
+    @Query("SELECT * FROM releases WHERE id = :id")
+    suspend fun release(id: String): ReleaseEntity?
+
+    @Query("SELECT * FROM releases WHERE id = :id")
+    fun observeRelease(id: String): Flow<ReleaseEntity?>
+
+    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND tracksFetchedAt = 0 ORDER BY dateMs DESC LIMIT :limit")
+    suspend fun recentWithoutTracks(sinceMs: Long, limit: Int): List<ReleaseEntity>
+
+    /** IGNORE, not REPLACE: a replace would delete the row and cascade away its tracks. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRelease(r: ReleaseEntity): Long
+
+    @Query("UPDATE releases SET title = :title, type = :type, date = :date, dateMs = :dateMs, coverUrl = :coverUrl, fetchedAt = :at WHERE id = :id")
+    suspend fun updateRelease(id: String, title: String, type: String, date: String, dateMs: Long, coverUrl: String?, at: Long)
+
+    @Query("DELETE FROM releases WHERE artist = :artist COLLATE NOCASE AND id NOT IN (:keep)")
+    suspend fun pruneReleases(artist: String, keep: List<String>)
+
+    @Query("UPDATE releases SET tracksFetchedAt = :at WHERE id = :id")
+    suspend fun setTracksFetched(id: String, at: Long)
+
+    @Query("SELECT * FROM release_tracks WHERE releaseId = :id ORDER BY position")
+    fun observeTracks(id: String): Flow<List<ReleaseTrackEntity>>
+
+    @Query("SELECT * FROM release_tracks WHERE releaseId = :id ORDER BY position")
+    suspend fun tracks(id: String): List<ReleaseTrackEntity>
+
+    @Query("DELETE FROM release_tracks WHERE releaseId = :id")
+    suspend fun clearTracks(id: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTracks(rows: List<ReleaseTrackEntity>)
+
+    @Transaction
+    suspend fun replaceTracks(id: String, rows: List<ReleaseTrackEntity>) {
+        clearTracks(id)
+        insertTracks(rows)
+        setTracksFetched(id, System.currentTimeMillis())
+    }
 }

@@ -127,3 +127,51 @@ data class LyricsEntity(
     val source: String,
     val fetchedAt: Long,
 )
+
+/**
+ * An artist the release feed watches: followed by hand ([followed]) or picked
+ * up automatically from what you play. [mbid] is the MusicBrainz id once found.
+ */
+@Entity(tableName = "feed_artists")
+data class FeedArtistEntity(
+    @PrimaryKey val name: String,
+    val mbid: String?,
+    val followed: Boolean,
+    val addedAt: Long,
+    val lastRefreshAt: Long = 0L,
+    val lastError: String? = null,
+)
+
+/** One release group (album, EP or single) from MusicBrainz, with its Cover Art Archive URL. */
+@Entity(tableName = "releases", indices = [Index("artist"), Index("dateMs")])
+data class ReleaseEntity(
+    @PrimaryKey val id: String,
+    val artist: String,
+    val artistMbid: String,
+    val title: String,
+    /** Album, EP or Single. */
+    val type: String,
+    /** As MusicBrainz gives it: yyyy, yyyy-mm or yyyy-mm-dd; empty when unknown. */
+    val date: String,
+    /** [date] parsed to UTC midnight, 0 when unknown; what the feed sorts and filters by. */
+    val dateMs: Long,
+    val coverUrl: String?,
+    val fetchedAt: Long,
+    /** When the track list was last fetched; 0 = not yet. */
+    val tracksFetchedAt: Long = 0L,
+)
+
+/** A track of a release, metadata only; the audio arrives when you play or download it. */
+@Entity(
+    tableName = "release_tracks",
+    primaryKeys = ["releaseId", "position"],
+    foreignKeys = [ForeignKey(entity = ReleaseEntity::class, parentColumns = ["id"], childColumns = ["releaseId"], onDelete = ForeignKey.CASCADE)],
+)
+data class ReleaseTrackEntity(
+    val releaseId: String,
+    val position: Int,
+    val title: String,
+    val artist: String,
+    val durationMs: Long,
+    val recordingId: String?,
+)

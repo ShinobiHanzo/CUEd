@@ -74,6 +74,7 @@ class CuedVmFactory(private val graph: Graph) : ViewModelProvider.Factory {
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(graph) as T
         modelClass.isAssignableFrom(StationViewModel::class.java) -> StationViewModel(graph) as T
         modelClass.isAssignableFrom(DesktopViewModel::class.java) -> DesktopViewModel(graph) as T
+        modelClass.isAssignableFrom(FeedViewModel::class.java) -> FeedViewModel(graph) as T
         else -> error("Unknown ViewModel $modelClass")
     }
 }
@@ -485,6 +486,10 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setSilenceThresholdDb(db: Float) = viewModelScope.launch { graph.settings.setSilenceThresholdDb(db) }
     fun setSilenceToleranceMs(ms: Int) = viewModelScope.launch { graph.settings.setSilenceToleranceMs(ms) }
     val lyrics: StateFlow<LyricsSettings> = graph.settings.lyrics.stateIn(viewModelScope, SharingStarted.Eagerly, LyricsSettings(true, true))
+    val feed: StateFlow<dev.cued.app.data.FeedSettings> = graph.settings.feed.stateIn(viewModelScope, SharingStarted.Eagerly, dev.cued.app.data.FeedSettings(true, false, 0L))
+    fun setFeedEnabled(on: Boolean) = viewModelScope.launch { graph.settings.setFeedEnabled(on) }
+    fun setFeedOnMobile(on: Boolean) = viewModelScope.launch { graph.settings.setFeedOnMobile(on) }
+    fun refreshFeed() { graph.feed.refreshAsync(force = true) }
     val lyricsBulk: StateFlow<LyricsRepository.BulkProgress?> = graph.lyrics.bulk
     val lyricsCount: StateFlow<Int> = graph.lyrics.count.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     fun setLyricsOnline(on: Boolean) = viewModelScope.launch { graph.settings.setLyricsOnline(on) }

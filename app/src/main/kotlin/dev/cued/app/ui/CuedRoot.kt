@@ -77,6 +77,8 @@ import androidx.compose.material.icons.filled.People
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
+import dev.cued.app.ui.screens.ArtistFeedScreen
+import dev.cued.app.ui.screens.ReleaseScreen
 import dev.cued.app.ui.screens.DesktopsScreen
 import dev.cued.app.ui.screens.DesktopLibraryScreen
 import dev.cued.app.ui.screens.FriendsScreen
@@ -140,6 +142,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val stvm: StationViewModel = viewModel(factory = factory)
     val setvm: SettingsViewModel = viewModel(factory = factory)
     val dkvm: DesktopViewModel = viewModel(factory = factory)
+    val fvm: FeedViewModel = viewModel(factory = factory)
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -230,6 +233,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val showChrome = route != Route.NOW_PLAYING
     val rootTitle = Route.topBarTitles[route]
     val friends by dkvm.friends.collectAsState()
+    val followedArtists by fvm.followed.collectAsState()
     val desktops by dkvm.desktops.collectAsState()
     val activeDownloads by dvm.activeCount.collectAsState()
     val stationOnAir by stvm.onAir.collectAsState()
@@ -340,7 +344,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 composable(Tab.HOME.route) {
                     val upd by setvm.update.collectAsState()
                     HomeScreen(
-                        lvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
+                        lvm, fvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
+                        onOpenRelease = { nav.navigate("feed/release/${URLEncoder.encode(it, "UTF-8")}") },
+                        onOpenArtistFeed = { nav.navigate("feed/artist/${URLEncoder.encode(it, "UTF-8")}") },
                         updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version,
                         onUpdate = { nav.navigate(Route.SETTINGS) { launchSingleTop = true } },
                         crashed = crash != null,
@@ -365,7 +371,25 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     ArtistScreen(
                         lvm, name, playingId = player.trackId, onBack = { nav.popBackStack() }, onPlay = play, onTrackMore = more,
                         onOpenAlbum = { artist, album -> nav.navigate("album/${URLEncoder.encode(artist, "UTF-8")}/${URLEncoder.encode(album, "UTF-8")}") },
+                        followed = followedArtists.any { it.name.equals(name, ignoreCase = true) },
+                        onToggleFollow = { fvm.setFollowed(name, !followedArtists.any { it.name.equals(name, ignoreCase = true) }) },
+                        onOpenFeed = { nav.navigate("feed/artist/${URLEncoder.encode(name, "UTF-8")}") },
                     )
+                }
+                // The release feed (MusicBrainz): an artist's releases, and one release's tracks.
+                composable("feed/artist/{name}") { e ->
+                    val name = java.net.URLDecoder.decode(e.arguments!!.getString("name")!!, "UTF-8")
+                    ArtistFeedScreen(fvm, name, onBack = { nav.popBackStack() },
+                        onOpenRelease = { nav.navigate("feed/release/${URLEncoder.encode(it, "UTF-8")}") },
+                        onOpenLibraryArtist = { nav.navigate("artist/${URLEncoder.encode(it, "UTF-8")}") },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
+                }
+                composable("feed/release/{id}") { e ->
+                    val id = java.net.URLDecoder.decode(e.arguments!!.getString("id")!!, "UTF-8")
+                    ReleaseScreen(fvm, id, onBack = { nav.popBackStack() },
+                        onOpenArtist = { nav.navigate("feed/artist/${URLEncoder.encode(it, "UTF-8")}") },
+                        onPlay = { t -> pvm.play(listOf(t)); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
                 composable("album/{artist}/{album}") { e ->
                     val artist = java.net.URLDecoder.decode(e.arguments!!.getString("artist")!!, "UTF-8")
