@@ -68,4 +68,14 @@ class ReleaseFeedTest {
         assertFalse(ReleaseFeed.sameTrack("Around the World", "Daft Punk", "One More Time", "Daft Punk"))
         assertFalse(ReleaseFeed.sameTrack("Around the World", "Daft Punk", "Around the World", "ATC"))
     }
+
+    @Test fun spotifyPicksNeedAnExactNameAndMapTypes() {
+        val c = listOf(ReleaseFeed.NamedCandidate("a", "Bonobo", 70), ReleaseFeed.NamedCandidate("b", "Bonobo", 20), ReleaseFeed.NamedCandidate("c", "Bonobo Tribute", 90))
+        assertEquals("a", ReleaseFeed.pickByName("bonobo", c)?.id)
+        assertNull(ReleaseFeed.pickByName("Bono", c))
+        assertEquals("Album", ReleaseFeed.spotifyTypeLabel("album", 12))
+        assertEquals("Single", ReleaseFeed.spotifyTypeLabel("single", 1))
+        assertEquals("EP", ReleaseFeed.spotifyTypeLabel("single", 5))
+        assertNull(ReleaseFeed.spotifyTypeLabel("compilation", 20))
+    }
 }

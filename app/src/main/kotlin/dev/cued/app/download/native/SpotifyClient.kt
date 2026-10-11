@@ -119,6 +119,75 @@ class SpotifyClient(private val clientId: String?, private val clientSecret: Str
         isrc = t["external_ids"]?.jsonObject?.get("isrc")?.jsonPrimitive?.contentOrNull(),
     )
 
+    // ---- Release feed (Web API only) ------------------------------------------------
+
+    data class Artist(val id: String, val name: String, val popularity: Int, val imageUrl: String?)
+    /** [type] is album or single as Spotify groups them; [releaseDate] is yyyy, yyyy-mm or yyyy-mm-dd. */
+    data class Album(val id: String, val name: String, val type: String, val releaseDate: String, val coverUrl: String?, val totalTracks: Int, val artists: List<String>)
+    data class AlbumTrack(val id: String?, val name: String, val artists: List<String>, val durationMs: Long, val trackNumber: Int, val discNumber: Int)
+
+    /** Up to ten artists matching a name, Spotify's own ranking. */
+    fun searchArtists(name: String): List<Artist> {
+        val r = api("search?q=${java.net.URLEncoder.encode("artist:\"$name\"", "UTF-8")}&type=artist&limit=10")
+        return r["artists"]?.jsonObject?.get("items")?.jsonArray.orEmpty().map { it.jsonObject }.mapNotNull { a ->
+            Artist(
+                a["id"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null, a["name"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                a["popularity"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0, a["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull(),
+            )
+        }
+    }
+
+    /**
+     * Albums and singles of an artist in one market (so each release appears
+     * once, not once per region), newest first. Compilations and "appears on"
+     * are left out, like the MusicBrainz side does.
+     */
+    fun artistAlbums(artistId: String, market: String): List<Album> {
+        val out = ArrayList<Album>()
+        var next: String? = "artists/$artistId/albums?include_groups=album,single&market=$market&limit=50"
+        var guard = 0
+        while (next != null && guard++ < 8) {
+            val page = api(next.removePrefix("https://api.spotify.com/v1/"))
+            for (el in page["items"]?.jsonArray.orEmpty()) {
+                val a = el.jsonObject
+                out += Album(
+                    id = a["id"]?.jsonPrimitive?.contentOrNull() ?: continue,
+                    name = a["name"]?.jsonPrimitive?.content ?: continue,
+                    type = a["album_type"]?.jsonPrimitive?.contentOrNull() ?: "album",
+                    releaseDate = a["release_date"]?.jsonPrimitive?.contentOrNull().orEmpty(),
+                    coverUrl = a["images"]?.jsonArray?.let { imgs -> imgs.map { it.jsonObject }.minByOrNull { kotlin.math.abs((it["width"]?.jsonPrimitive?.content?.toIntOrNull() ?: 640) - 300) }?.get("url")?.jsonPrimitive?.contentOrNull() },
+                    totalTracks = a["total_tracks"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    artists = a["artists"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull() },
+                )
+            }
+            next = page["next"]?.jsonPrimitive?.contentOrNull()
+        }
+        // The same record often exists as a few editions; keep the fullest one per name and date.
+        return out.groupBy { it.name.lowercase().trim() + "|" + it.releaseDate }.values.map { eds -> eds.maxByOrNull { it.totalTracks }!! }.sortedByDescending { it.releaseDate }
+    }
+
+    fun albumTracks(albumId: String): List<AlbumTrack> {
+        val out = ArrayList<AlbumTrack>()
+        var next: String? = "albums/$albumId/tracks?limit=50"
+        var guard = 0
+        while (next != null && guard++ < 8) {
+            val page = api(next.removePrefix("https://api.spotify.com/v1/"))
+            for (el in page["items"]?.jsonArray.orEmpty()) {
+                val t = el.jsonObject
+                out += AlbumTrack(
+                    id = t["id"]?.jsonPrimitive?.contentOrNull(),
+                    name = t["name"]?.jsonPrimitive?.content ?: continue,
+                    artists = t["artists"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull() },
+                    durationMs = t["duration_ms"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
+                    trackNumber = t["track_number"]?.jsonPrimitive?.content?.toIntOrNull() ?: (out.size + 1),
+                    discNumber = t["disc_number"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1,
+                )
+            }
+            next = page["next"]?.jsonPrimitive?.contentOrNull()
+        }
+        return out.sortedWith(compareBy({ it.discNumber }, { it.trackNumber }))
+    }
+
     // ---- Keyless: the embed page -------------------------------------------------
 
     private fun embed(kind: String, id: String): Collection {

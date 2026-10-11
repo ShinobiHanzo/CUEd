@@ -86,6 +86,21 @@ object ReleaseFeed {
         return candidates.filter { it.score >= 97 }.maxByOrNull { it.score }
     }
 
+    data class NamedCandidate(val id: String, val name: String, val popularity: Int)
+
+    /** A search without scores (Spotify): the name must match once normalised; the most popular such artist wins. */
+    fun pickByName(query: String, candidates: List<NamedCandidate>): NamedCandidate? {
+        val want = Matcher.normalize(query)
+        return candidates.filter { Matcher.normalize(it.name) == want }.maxByOrNull { it.popularity }
+    }
+
+    /** Spotify's album_type → the feed's label. */
+    fun spotifyTypeLabel(albumType: String, totalTracks: Int): String? = when (albumType.lowercase()) {
+        "album" -> "Album"
+        "single" -> if (totalTracks in 3..7) "EP" else "Single"
+        else -> null
+    }
+
     /** Same song? Title words must largely agree and the artist must match; feat. tags and "(Remastered)" do not matter. */
     fun sameTrack(title: String, artist: String, otherTitle: String, otherArtist: String): Boolean {
         val a = Matcher.normalize(artist); val b = Matcher.normalize(otherArtist)

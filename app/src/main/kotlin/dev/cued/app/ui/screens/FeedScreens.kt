@@ -81,11 +81,11 @@ fun NewReleasesRow(fvm: FeedViewModel, onOpenRelease: (String) -> Unit) {
     val refreshing by fvm.refreshing.collectAsState()
     val note by fvm.note.collectAsState()
     Column {
-        SectionHeader("New releases", note ?: "From artists you play or follow · MusicBrainz") {
+        SectionHeader("New releases", note ?: "From artists you play or follow") {
             if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             else IconButton(onClick = { fvm.refresh() }) { Icon(Icons.Default.Refresh, contentDescription = "Check for new releases") }
         }
-        if (releases.isEmpty()) EmptyHint(if (refreshing) "Checking MusicBrainz…" else "Nothing new yet. Play some music or follow an artist, then pull the refresh.")
+        if (releases.isEmpty()) EmptyHint(if (refreshing) "Checking for new releases…" else "Nothing new yet. Play some music or follow an artist, then pull the refresh.")
         else LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             items(releases, key = { it.id }) { r -> ReleaseCard(r, Modifier.width(132.dp).padding(8.dp)) { onOpenRelease(r.id) } }
         }
@@ -181,7 +181,7 @@ fun ArtistFeedScreen(fvm: FeedViewModel, name: String, onBack: () -> Unit, onOpe
                         bits += when {
                             a == null -> "Looking up…"
                             a.lastError != null -> a.lastError!!
-                            a.lastRefreshAt == 0L -> if (refreshing) "Fetching from MusicBrainz…" else "Not fetched yet"
+                            a.lastRefreshAt == 0L -> if (refreshing) "Fetching the discography…" else "Not fetched yet"
                             else -> "Checked " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(a.lastRefreshAt)
                         }
                         Text(bits.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -249,11 +249,11 @@ fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onO
                     }
                 }
                 busy?.let { Text(it, color = Teal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
-                Text("Metadata and cover from MusicBrainz. Tap a track: the library copy plays if you have it; otherwise it streams from YouTube Music right away and the file downloads in the background.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                Text("Metadata and cover from ${if (r.source == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}. Tap a track: the library copy plays if you have it; otherwise it streams from YouTube Music right away and the file downloads in the background.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
             if (tracks.isEmpty()) item {
                 if (r.tracksFetchedAt == 0L) Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Fetching the track list…", color = Muted) }
-                else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) { EmptyHint("MusicBrainz has no track list for this release yet"); TextButton(onClick = { fvm.ensureTracks(releaseId, force = true) }) { Text("Try again") } }
+                else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) { EmptyHint("No track list for this release yet"); TextButton(onClick = { fvm.ensureTracks(releaseId, force = true) }) { Text("Try again") } }
             }
             items(tracks, key = { it.position }) { t ->
                 val copy = copies[t.position]

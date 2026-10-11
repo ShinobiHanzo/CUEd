@@ -10,6 +10,7 @@ import dev.cued.app.data.db.FeedArtistEntity
 import dev.cued.app.data.db.ReleaseEntity
 import dev.cued.app.data.db.ReleaseTrackEntity
 import dev.cued.app.data.db.TrackEntity
+import dev.cued.app.download.native.SpotifyClient
 import dev.cued.app.download.native.YouTubeSource
 import dev.cued.app.genre.MusicBrainzClient
 import dev.cued.app.util.DebugLog
@@ -30,16 +31,18 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * New releases and artist feeds. MusicBrainz (open data, no key, one request
- * a second) says what the artists you play or follow have put out; the rows
- * live in Room so the home page and the artist pages work offline. Audio is
- * fetched only when you play or download a track: the stream starts at once
- * from YouTube Music while the normal download queue brings the file in.
+ * New releases and artist feeds. The metadata comes from Spotify's Web API
+ * when your own client keys are set (dates to the day, covers every time), or
+ * from MusicBrainz (open data, no key, one request a second) otherwise; the
+ * rows live in Room so the home page and the artist pages work offline. Audio
+ * is fetched only when you play or download a track: the stream starts at
+ * once from YouTube Music while the normal download queue brings the file in.
  */
 class FeedRepository(private val graph: Graph) {
     private val db get() = graph.db
     private val dao get() = graph.db.feed()
     private val mb by lazy { MusicBrainzClient("CUEd/${BuildConfig.VERSION_NAME} (https://github.com/ShinobiHanzo/CUEd)") }
+    private var spotifyCache: Pair<String, SpotifyClient>? = null
     private val refreshMutex = Mutex()
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
@@ -82,22 +85,71 @@ class FeedRepository(private val graph: Graph) {
         if (!force && now - a.lastRefreshAt < ARTIST_TTL_MS) return@withContext true
         if (!online()) return@withContext false
         runCatching {
-            val mbid = a.mbid ?: mb.findArtist(a.name)?.id
-            if (mbid == null) { dao.markRefreshed(a.name, null, now, "Not found on MusicBrainz"); return@runCatching }
-            val groups = mb.releaseGroups(mbid)
-            for (g in groups) {
-                val dateMs = ReleaseFeed.parseDate(g.date) ?: 0L
-                val cover = mb.coverUrl(g.id)
-                if (dao.insertRelease(ReleaseEntity(g.id, a.name, mbid, g.title, g.type, g.date, dateMs, cover, now)) == -1L) {
-                    dao.updateRelease(g.id, g.title, g.type, g.date, dateMs, cover, now)
-                }
-            }
-            if (groups.isNotEmpty()) dao.pruneReleases(a.name, groups.map { it.id })
-            dao.markRefreshed(a.name, mbid, now, null)
-            DebugLog.d(TAG, "${a.name}: ${groups.size} releases")
+            if (source() == ReleaseEntity.SOURCE_SPOTIFY) refreshFromSpotify(a, now) else refreshFromMusicBrainz(a, now)
         }.onFailure { e -> DebugLog.w(TAG, "feed refresh ${a.name}", e); dao.markRefreshed(a.name, a.mbid, now, e.message ?: "failed") }
         true
     }
+
+    private suspend fun refreshFromMusicBrainz(a: FeedArtistEntity, now: Long) {
+        val mbid = a.mbid ?: mb.findArtist(a.name)?.id
+        if (mbid == null) { dao.markRefreshed(a.name, null, now, "Not found on MusicBrainz"); return }
+        val groups = mb.releaseGroups(mbid)
+        dao.pruneOtherSource(a.name, ReleaseEntity.SOURCE_MUSICBRAINZ)
+        for (g in groups) {
+            val dateMs = ReleaseFeed.parseDate(g.date) ?: 0L
+            val cover = mb.coverUrl(g.id)
+            if (dao.insertRelease(ReleaseEntity(g.id, a.name, mbid, g.title, g.type, g.date, dateMs, cover, now, source = ReleaseEntity.SOURCE_MUSICBRAINZ)) == -1L) {
+                dao.updateRelease(g.id, g.title, g.type, g.date, dateMs, cover, now)
+            }
+        }
+        if (groups.isNotEmpty()) dao.pruneReleases(a.name, groups.map { it.id })
+        dao.markRefreshed(a.name, mbid, now, null)
+        DebugLog.d(TAG, "${a.name}: ${groups.size} releases (MusicBrainz)")
+    }
+
+    private suspend fun refreshFromSpotify(a: FeedArtistEntity, now: Long) {
+        val sp = spotify() ?: return refreshFromMusicBrainz(a, now)
+        val sid = a.spotifyId ?: sp.searchArtists(a.name).let { hits -> ReleaseFeed.pickByName(a.name, hits.map { ReleaseFeed.NamedCandidate(it.id, it.name, it.popularity) })?.id }
+        if (sid == null) { dao.markRefreshed(a.name, a.mbid, now, "Not found on Spotify"); return }
+        if (a.spotifyId != sid) dao.setSpotifyId(a.name, sid)
+        val albums = sp.artistAlbums(sid, market())
+        dao.pruneOtherSource(a.name, ReleaseEntity.SOURCE_SPOTIFY)
+        val kept = ArrayList<String>()
+        for (al in albums) {
+            val type = ReleaseFeed.spotifyTypeLabel(al.type, al.totalTracks) ?: continue
+            val dateMs = ReleaseFeed.parseDate(al.releaseDate) ?: 0L
+            kept += al.id
+            if (dao.insertRelease(ReleaseEntity(al.id, a.name, a.mbid.orEmpty(), al.name, type, al.releaseDate, dateMs, al.coverUrl, now, source = ReleaseEntity.SOURCE_SPOTIFY, spotifyId = al.id)) == -1L) {
+                dao.updateRelease(al.id, al.name, type, al.releaseDate, dateMs, al.coverUrl, now)
+            }
+        }
+        if (kept.isNotEmpty()) dao.pruneReleases(a.name, kept)
+        dao.markRefreshed(a.name, a.mbid, now, null)
+        DebugLog.d(TAG, "${a.name}: ${kept.size} releases (Spotify)")
+    }
+
+    /** Which metadata source a refresh uses right now: the setting, with Auto meaning Spotify when its keys are set. */
+    suspend fun source(): String {
+        val s = graph.settings.feedNow()
+        val keys = spotify() != null
+        return when (s.source) {
+            FeedSettings.SOURCE_SPOTIFY -> if (keys) ReleaseEntity.SOURCE_SPOTIFY else ReleaseEntity.SOURCE_MUSICBRAINZ
+            FeedSettings.SOURCE_MUSICBRAINZ -> ReleaseEntity.SOURCE_MUSICBRAINZ
+            else -> if (keys) ReleaseEntity.SOURCE_SPOTIFY else ReleaseEntity.SOURCE_MUSICBRAINZ
+        }
+    }
+
+    /** A Spotify client for the keys in the download settings, or null without keys. One per key pair, so the token is reused. */
+    private suspend fun spotify(): SpotifyClient? {
+        val ds = graph.settings.downloadNow()
+        val id = ds.spotifyClientId?.takeIf { it.isNotBlank() } ?: return null
+        val secret = ds.spotifyClientSecret?.takeIf { it.isNotBlank() } ?: return null
+        val key = "$id:$secret"
+        spotifyCache?.takeIf { it.first == key }?.let { return it.second }
+        return SpotifyClient(id, secret).also { spotifyCache = key to it }
+    }
+
+    private fun market(): String = java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase() ?: "US"
 
     /** The track list for a release, fetched once (or again with [force]). */
     suspend fun ensureTracks(releaseId: String, force: Boolean = false) = withContext(Dispatchers.IO) {
@@ -105,9 +157,13 @@ class FeedRepository(private val graph: Graph) {
         if (!force && r.tracksFetchedAt > 0) return@withContext
         if (!online()) return@withContext
         runCatching {
-            val tracks = mb.releaseTracks(r.id, r.artist)
-            if (tracks.isNotEmpty()) dao.replaceTracks(r.id, tracks.map { ReleaseTrackEntity(r.id, it.position, it.title, it.artist, it.durationMs, it.recordingId) })
-            else dao.setTracksFetched(r.id, System.currentTimeMillis())
+            val rows = if (r.source == ReleaseEntity.SOURCE_SPOTIFY && r.spotifyId != null) {
+                val sp = spotify() ?: error("Spotify keys were removed")
+                sp.albumTracks(r.spotifyId).mapIndexed { i, t -> ReleaseTrackEntity(r.id, i + 1, t.name, t.artists.joinToString(", ").ifBlank { r.artist }, t.durationMs, null, spotifyId = t.id) }
+            } else {
+                mb.releaseTracks(r.id, r.artist).map { ReleaseTrackEntity(r.id, it.position, it.title, it.artist, it.durationMs, it.recordingId) }
+            }
+            if (rows.isNotEmpty()) dao.replaceTracks(r.id, rows) else dao.setTracksFetched(r.id, System.currentTimeMillis())
         }.onFailure { DebugLog.w(TAG, "tracks for ${r.title}", it) }
     }
 
@@ -138,7 +194,7 @@ class FeedRepository(private val graph: Graph) {
             for (a in stale) if (refreshArtist(a.name, force = true)) checked++
             for (r in dao.recentWithoutTracks(now - ReleaseFeed.RECENT_DAYS * ReleaseFeed.DAY_MS, MAX_TRACKLISTS_PER_RUN)) ensureTracks(r.id)
             graph.settings.setFeedRefreshedAt(now)
-            _note.value = if (checked == 0) "Up to date" else "Checked $checked artist${if (checked == 1) "" else "s"} on MusicBrainz"
+            _note.value = if (checked == 0) "Up to date" else "Checked $checked artist${if (checked == 1) "" else "s"} on ${if (source() == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}"
         } finally {
             _refreshing.value = false
             refreshMutex.unlock()
@@ -195,18 +251,21 @@ class FeedRepository(private val graph: Graph) {
             )
             val id = db.tracks().insert(row)
             if (id <= 0) error("Could not keep the track")
-            graph.downloads.enqueue(best.id, t.title, t.artist)
-            retireWhenDownloaded(id, best.id, t)
+            val source = downloadSource(t) ?: best.id
+            graph.downloads.enqueue(source, t.title, t.artist)
+            retireWhenDownloaded(id, source, t)
             db.tracks().byId(id) ?: error("row vanished")
         }
     }
 
-    /** Download without playing: the built-in downloader searches YouTube Music for the artist and title. */
-    fun download(t: ReleaseTrackEntity) = graph.downloads.enqueue("${t.artist} - ${t.title}", t.title, t.artist)
+    /** Download without playing: a Spotify track link when known (full metadata), else a YouTube Music search for artist and title. */
+    fun download(t: ReleaseTrackEntity) = graph.downloads.enqueue(downloadSource(t) ?: "${t.artist} - ${t.title}", t.title, t.artist)
+
+    private fun downloadSource(t: ReleaseTrackEntity): String? = t.spotifyId?.let { "https://open.spotify.com/track/$it" }
 
     /** Once the background download has produced a library file, the temporary stream row goes. */
-    private fun retireWhenDownloaded(tempId: Long, ytUrl: String, t: ReleaseTrackEntity) = graph.appScope.launch {
-        val src = SourceLinks.canonical(ytUrl)
+    private fun retireWhenDownloaded(tempId: Long, source: String, t: ReleaseTrackEntity) = graph.appScope.launch {
+        val src = SourceLinks.canonical(source)
         val job = withTimeoutOrNull(2 * 60 * 60 * 1000L) {
             graph.downloads.jobs.mapNotNull { jobs -> jobs.firstOrNull { it.source == src && (it.status == "DONE" || it.status == "FAILED") } }.first()
         } ?: return@launch
@@ -223,7 +282,8 @@ class FeedRepository(private val graph: Graph) {
     }
 
     /** Refreshes are background traffic: Wi-Fi (or Ethernet) unless mobile data is allowed in Settings. */
-    private suspend fun online(s: FeedSettings = graph.settings.feedNow()): Boolean {
+    private suspend fun online(settings: FeedSettings? = null): Boolean {
+        val s = settings ?: graph.settings.feedNow()
         val cm = graph.app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
         if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false

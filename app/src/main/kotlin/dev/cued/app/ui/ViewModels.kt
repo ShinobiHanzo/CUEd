@@ -489,6 +489,8 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     val feed: StateFlow<dev.cued.app.data.FeedSettings> = graph.settings.feed.stateIn(viewModelScope, SharingStarted.Eagerly, dev.cued.app.data.FeedSettings(true, false, 0L))
     fun setFeedEnabled(on: Boolean) = viewModelScope.launch { graph.settings.setFeedEnabled(on) }
     fun setFeedOnMobile(on: Boolean) = viewModelScope.launch { graph.settings.setFeedOnMobile(on) }
+    fun setFeedSource(source: String) = viewModelScope.launch { graph.settings.setFeedSource(source) }
+    val spotifyKeysSet: StateFlow<Boolean> = graph.settings.download.map { !it.spotifyClientId.isNullOrBlank() && !it.spotifyClientSecret.isNullOrBlank() }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     fun refreshFeed() { graph.feed.refreshAsync(force = true) }
     val lyricsBulk: StateFlow<LyricsRepository.BulkProgress?> = graph.lyrics.bulk
     val lyricsCount: StateFlow<Int> = graph.lyrics.count.stateIn(viewModelScope, SharingStarted.Eagerly, 0)

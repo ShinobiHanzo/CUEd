@@ -18,6 +18,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Arrangement
+import dev.cued.app.data.FeedSettings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.mutableStateOf
@@ -140,6 +143,20 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         SectionHeader("New releases & artist feeds", "MusicBrainz (open data, no key) lists what your artists put out; audio comes from YouTube Music only when you play or download a track")
         ToggleRow("Show on the home page", "New releases from artists you play or follow, and your followed artists' pages", feed.enabled) { vm.setFeedEnabled(it) }
         ToggleRow("Refresh on mobile data", "Off: feeds update on Wi-Fi only. A few small requests per artist, about once a day.", feed.onMobile) { vm.setFeedOnMobile(it) }
+        val spotifyKeys by vm.spotifyKeysSet.collectAsState()
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Text("Metadata source", style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (spotifyKeys) "Spotify keys are set (Downloads → Built-in): Auto uses Spotify, which knows release dates to the day and always has covers."
+                else "No Spotify keys yet, so Auto uses MusicBrainz. Add your own free Spotify developer keys under Downloads → Built-in and Auto switches to Spotify.",
+                style = MaterialTheme.typography.bodySmall, color = Muted,
+            )
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((key, label) in listOf(FeedSettings.SOURCE_AUTO to "Auto", FeedSettings.SOURCE_SPOTIFY to "Spotify", FeedSettings.SOURCE_MUSICBRAINZ to "MusicBrainz")) {
+                    FilterChip(selected = feed.source == key, onClick = { vm.setFeedSource(key) }, label = { Text(label) }, enabled = key != FeedSettings.SOURCE_SPOTIFY || spotifyKeys)
+                }
+            }
+        }
         TextButton(onClick = { vm.refreshFeed() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Check for new releases now") }
 
         SectionHeader("Library", if (pending > 0) "$pending track(s) waiting for analysis" else "Tempo + spectrogram analysis runs on-device, one track at a time")

@@ -297,6 +297,9 @@ interface FeedDao {
     @Query("UPDATE feed_artists SET mbid = :mbid, lastRefreshAt = :at, lastError = :error WHERE name = :name")
     suspend fun markRefreshed(name: String, mbid: String?, at: Long, error: String?)
 
+    @Query("UPDATE feed_artists SET spotifyId = :spotifyId WHERE name = :name")
+    suspend fun setSpotifyId(name: String, spotifyId: String?)
+
     @Query("DELETE FROM feed_artists WHERE name = :name COLLATE NOCASE")
     suspend fun deleteArtist(name: String)
 
@@ -324,6 +327,9 @@ interface FeedDao {
 
     @Query("UPDATE releases SET title = :title, type = :type, date = :date, dateMs = :dateMs, coverUrl = :coverUrl, fetchedAt = :at WHERE id = :id")
     suspend fun updateRelease(id: String, title: String, type: String, date: String, dateMs: Long, coverUrl: String?, at: Long)
+
+    @Query("DELETE FROM releases WHERE artist = :artist COLLATE NOCASE AND source != :source")
+    suspend fun pruneOtherSource(artist: String, source: String)
 
     @Query("DELETE FROM releases WHERE artist = :artist COLLATE NOCASE AND id NOT IN (:keep)")
     suspend fun pruneReleases(artist: String, keep: List<String>)

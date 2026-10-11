@@ -140,6 +140,8 @@ data class FeedArtistEntity(
     val addedAt: Long,
     val lastRefreshAt: Long = 0L,
     val lastError: String? = null,
+    /** Spotify artist id when the feed source is Spotify. */
+    val spotifyId: String? = null,
 )
 
 /** One release group (album, EP or single) from MusicBrainz, with its Cover Art Archive URL. */
@@ -159,7 +161,15 @@ data class ReleaseEntity(
     val fetchedAt: Long,
     /** When the track list was last fetched; 0 = not yet. */
     val tracksFetchedAt: Long = 0L,
-)
+    /** Where this row came from: musicbrainz or spotify ([id] is that source's id). */
+    @ColumnInfo(defaultValue = "musicbrainz") val source: String = SOURCE_MUSICBRAINZ,
+    val spotifyId: String? = null,
+) {
+    companion object {
+        const val SOURCE_MUSICBRAINZ = "musicbrainz"
+        const val SOURCE_SPOTIFY = "spotify"
+    }
+}
 
 /** A track of a release, metadata only; the audio arrives when you play or download it. */
 @Entity(
@@ -174,4 +184,6 @@ data class ReleaseTrackEntity(
     val artist: String,
     val durationMs: Long,
     val recordingId: String?,
+    /** Spotify track id when known: downloads then carry Spotify's metadata. */
+    val spotifyId: String? = null,
 )

@@ -1,7 +1,8 @@
 # New releases and artist feeds
 
-Two rows on the home page, both fed by [MusicBrainz](https://musicbrainz.org) (open data, no key,
-one request per second) and cached in the app's database so they read fine offline:
+Two rows on the home page, fed by Spotify's Web API when you have set your own client keys and by
+[MusicBrainz](https://musicbrainz.org) (open data, no key, one request per second) otherwise, and
+cached in the app's database so they read fine offline:
 
 - **New releases.** Albums, EPs and singles from the last 120 days (and announced ones) by the
   artists you play most and the artists you follow. Tap one for its track list.
@@ -24,10 +25,24 @@ the phone. Tracks already in the library are marked and play from the library. F
 2. **The cloud icon** downloads without playing. *Download* on the release page queues every
    track you lack.
 
+## Spotify or MusicBrainz
+
+| | Spotify (your keys) | MusicBrainz (default) |
+|---|---|---|
+| Needs | a free developer app at developer.spotify.com; client id and secret under Downloads → Built-in | nothing |
+| Release dates | to the day, singles the day they drop | often the year only for recent singles; volunteers enter data |
+| Covers | always | Cover Art Archive, missing for many smaller releases |
+| Downloads | queued as Spotify track links, so the file gets Spotify's title, album, cover and genres | queued as an artist-and-title search |
+| Caveats | Spotify has been tightening development-mode access since late 2024, and its terms frown on using the catalogue to fetch audio elsewhere; your keys, your call | one request per second, so a first pass over many artists takes a minute |
+
+Settings → *New releases & artist feeds* → *Metadata source*: **Auto** picks Spotify when keys are
+set, or force either. Switching sources re-reads each artist on its next refresh.
+
 ## What goes online
 
-- MusicBrainz: artist search, release groups, one release's track list. About one to three small
-  requests per artist, once a day, Wi-Fi only unless you allow mobile data in Settings.
+- Spotify (with keys) or MusicBrainz: artist search, the discography, one release's track list.
+  About one to three small requests per artist, once a day, Wi-Fi only unless you allow mobile
+  data in Settings.
 - Cover Art Archive: the cover thumbnails (redirects to archive.org).
 - YouTube Music: only when you play or download a track.
 
