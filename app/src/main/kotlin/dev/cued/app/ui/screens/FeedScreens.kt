@@ -150,9 +150,9 @@ fun ArtistFeedScreen(fvm: FeedViewModel, name: String, onBack: () -> Unit, onOpe
     val artist by remember(name) { fvm.artist(name) }.collectAsState(initial = null)
     val releases by remember(name) { fvm.releasesFor(name) }.collectAsState(initial = emptyList())
     val refreshing by fvm.refreshing.collectAsState()
+    val fetchingArtists by fvm.fetchingArtists.collectAsState()
+    val fetching = refreshing || name in fetchingArtists
     val library by fvm.library.collectAsState()
-    val message by fvm.message.collectAsState()
-    LaunchedEffect(message) { message?.let { onMessage(it); fvm.clearMessage() } }
     val owned = remember(library, name) { library.count { Discography.primaryArtist(it.albumArtist?.takeIf { a -> a.isNotBlank() } ?: it.artist).equals(name, ignoreCase = true) } }
     val followed = artist?.followed == true
     val now = System.currentTimeMillis()
@@ -181,7 +181,7 @@ fun ArtistFeedScreen(fvm: FeedViewModel, name: String, onBack: () -> Unit, onOpe
                         bits += when {
                             a == null -> "Looking up…"
                             a.lastError != null -> a.lastError!!
-                            a.lastRefreshAt == 0L -> if (refreshing) "Fetching the discography…" else "Not fetched yet"
+                            a.lastRefreshAt == 0L -> if (fetching) "Fetching the discography…" else "Not fetched yet (offline?)"
                             else -> "Checked " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(a.lastRefreshAt)
                         }
                         Text(bits.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -193,7 +193,13 @@ fun ArtistFeedScreen(fvm: FeedViewModel, name: String, onBack: () -> Unit, onOpe
                     }
                 }
             }
-            if (releases.isEmpty()) item { EmptyHint(if (refreshing || artist?.lastRefreshAt == 0L) "Fetching the discography…" else "No albums, EPs or singles found for $name") }
+            if (releases.isEmpty()) item {
+                if (fetching) Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Fetching the discography…", color = Muted) }
+                else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    EmptyHint(if (artist?.lastRefreshAt == 0L) "Nothing saved yet. This needs a connection once." else "No albums, EPs or singles found for $name")
+                    TextButton(onClick = { fvm.refreshArtist(name) }) { Text("Try again") }
+                }
+            }
             else {
                 item { SectionHeader("Releases", "Newest first · tap one for its tracks") }
                 items(releases, key = { it.id }) { r ->
@@ -222,8 +228,8 @@ fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onO
     val tracks by remember(releaseId) { fvm.tracks(releaseId) }.collectAsState(initial = emptyList())
     val library by fvm.library.collectAsState()
     val busy by fvm.busy.collectAsState()
-    val message by fvm.message.collectAsState()
-    LaunchedEffect(message) { message?.let { onMessage(it); fvm.clearMessage() } }
+    val fetchingReleases by fvm.fetchingReleases.collectAsState()
+    val fetching = releaseId in fetchingReleases
     val copies = remember(tracks, library) { tracks.associate { it.position to fvm.libraryCopy(it, library) } }
     val owned = copies.values.count { it != null }
 
@@ -252,8 +258,11 @@ fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onO
                 Text("Metadata and cover from ${if (r.source == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}. Tap a track: the library copy plays if you have it; otherwise it streams from YouTube Music right away and the file downloads in the background.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
             if (tracks.isEmpty()) item {
-                if (r.tracksFetchedAt == 0L) Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Fetching the track list…", color = Muted) }
-                else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) { EmptyHint("No track list for this release yet"); TextButton(onClick = { fvm.ensureTracks(releaseId, force = true) }) { Text("Try again") } }
+                if (fetching) Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Fetching the track list…", color = Muted) }
+                else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    EmptyHint(if (r.tracksFetchedAt == 0L) "No track list saved yet. This needs a connection once." else "No track list for this release yet")
+                    TextButton(onClick = { fvm.ensureTracks(releaseId, force = true) }) { Text("Try again") }
+                }
             }
             items(tracks, key = { it.position }) { t ->
                 val copy = copies[t.position]

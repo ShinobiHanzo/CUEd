@@ -68,22 +68,29 @@ class FeedRepository(private val graph: Graph) {
         if (on) refreshArtistAsync(n)
     }
 
-    /** Opening an artist's page: the artist joins the watch list (unfollowed) and gets fetched if stale. */
-    fun openArtistAsync(name: String): Job = graph.appScope.launch {
+    /**
+     * Opening an artist's page: the artist joins the watch list (unfollowed)
+     * and gets fetched if stale. False when that fetch could not run (offline).
+     */
+    suspend fun openArtist(name: String): Boolean {
         val n = name.trim()
-        if (n.isEmpty()) return@launch
+        if (n.isEmpty()) return false
         if (dao.artist(n) == null) dao.upsertArtist(FeedArtistEntity(n, null, false, System.currentTimeMillis()))
-        runCatching { refreshArtist(n) }.onFailure { DebugLog.w(TAG, "open artist $n", it) }
+        return runCatching { refreshArtist(n) }.onFailure { DebugLog.w(TAG, "open artist $n", it) }.getOrDefault(false)
     }
 
     fun refreshArtistAsync(name: String): Job = graph.appScope.launch { runCatching { refreshArtist(name, force = true) }.onFailure { DebugLog.w(TAG, "refresh artist $name", it) } }
 
-    /** Finds the artist on MusicBrainz (once) and re-reads its release groups. False when offline or unknown. */
-    suspend fun refreshArtist(name: String, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Finds the artist at the source (once) and re-reads its releases. False
+     * when it could not run: no connection, or only mobile data for a
+     * [background] pass with mobile data off in Settings.
+     */
+    suspend fun refreshArtist(name: String, force: Boolean = false, background: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val a = dao.artist(name) ?: return@withContext false
         val now = System.currentTimeMillis()
         if (!force && now - a.lastRefreshAt < ARTIST_TTL_MS) return@withContext true
-        if (!online()) return@withContext false
+        if (if (background) !online() else !connected()) return@withContext false
         runCatching {
             if (source() == ReleaseEntity.SOURCE_SPOTIFY) refreshFromSpotify(a, now) else refreshFromMusicBrainz(a, now)
         }.onFailure { e -> DebugLog.w(TAG, "feed refresh ${a.name}", e); dao.markRefreshed(a.name, a.mbid, now, e.message ?: "failed") }
@@ -151,11 +158,11 @@ class FeedRepository(private val graph: Graph) {
 
     private fun market(): String = java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase() ?: "US"
 
-    /** The track list for a release, fetched once (or again with [force]). */
-    suspend fun ensureTracks(releaseId: String, force: Boolean = false) = withContext(Dispatchers.IO) {
-        val r = dao.release(releaseId) ?: return@withContext
-        if (!force && r.tracksFetchedAt > 0) return@withContext
-        if (!online()) return@withContext
+    /** The track list for a release, fetched once (or again with [force]). False when offline. */
+    suspend fun ensureTracks(releaseId: String, force: Boolean = false, background: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        val r = dao.release(releaseId) ?: return@withContext false
+        if (!force && r.tracksFetchedAt > 0) return@withContext true
+        if (if (background) !online() else !connected()) return@withContext false
         runCatching {
             val rows = if (r.source == ReleaseEntity.SOURCE_SPOTIFY && r.spotifyId != null) {
                 val sp = spotify() ?: error("Spotify keys were removed")
@@ -165,6 +172,7 @@ class FeedRepository(private val graph: Graph) {
             }
             if (rows.isNotEmpty()) dao.replaceTracks(r.id, rows) else dao.setTracksFetched(r.id, System.currentTimeMillis())
         }.onFailure { DebugLog.w(TAG, "tracks for ${r.title}", it) }
+        true
     }
 
     fun refreshAsync(force: Boolean = false): Job = graph.appScope.launch { runCatching { refresh(force) }.onFailure { DebugLog.w(TAG, "feed refresh", it) } }
@@ -191,8 +199,8 @@ class FeedRepository(private val graph: Graph) {
             for (name in listenedArtists()) if (dao.artist(name) == null) dao.upsertArtist(FeedArtistEntity(name, null, false, now))
             val stale = dao.allArtists().filter { force || now - it.lastRefreshAt > ARTIST_TTL_MS }.sortedBy { it.lastRefreshAt }.take(MAX_ARTISTS_PER_RUN)
             var checked = 0
-            for (a in stale) if (refreshArtist(a.name, force = true)) checked++
-            for (r in dao.recentWithoutTracks(now - ReleaseFeed.RECENT_DAYS * ReleaseFeed.DAY_MS, MAX_TRACKLISTS_PER_RUN)) ensureTracks(r.id)
+            for (a in stale) if (refreshArtist(a.name, force = true, background = true)) checked++
+            for (r in dao.recentWithoutTracks(now - ReleaseFeed.RECENT_DAYS * ReleaseFeed.DAY_MS, MAX_TRACKLISTS_PER_RUN)) ensureTracks(r.id, background = true)
             graph.settings.setFeedRefreshedAt(now)
             _note.value = if (checked == 0) "Up to date" else "Checked $checked artist${if (checked == 1) "" else "s"} on ${if (source() == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}"
         } finally {

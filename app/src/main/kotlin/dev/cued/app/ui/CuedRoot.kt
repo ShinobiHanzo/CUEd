@@ -234,6 +234,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val rootTitle = Route.topBarTitles[route]
     val friends by dkvm.friends.collectAsState()
     val followedArtists by fvm.followed.collectAsState()
+    LaunchedEffect(fvm) { fvm.message.collect { snackbar.showSnackbar(it) } }
     val desktops by dkvm.desktops.collectAsState()
     val activeDownloads by dvm.activeCount.collectAsState()
     val stationOnAir by stvm.onAir.collectAsState()
