@@ -5,23 +5,25 @@ Two rows on the home page, fed by Spotify's Web API when you have set your own c
 cached in the app's database so they read fine offline:
 
 - **New releases.** Albums, EPs and singles from the last 120 days (and announced ones) by the
-  artists you play most and the artists you follow. Tap one for its track list.
+  artists you follow. Tap one for its track list.
 - **Your artists.** The artists you follow. Each opens an RSS-like page of everything they have
-  released, newest first; tap a release for its tracks.
+  released, newest first; tap a release for its tracks. Under the row, one-tap *Follow* chips
+  suggest the artists you play most but do not follow yet.
 
-Follow an artist with the star on their library page or their feed page. Artists you play often
-are watched automatically without being listed under *Your artists*; following them pins them.
+Follow an artist with the star on their library page or their feed page. Only followed artists
+feed the home rows and the daily refresh; an artist you merely open is fetched for that page.
 
 ## Tracks you do not have yet
 
 A release page lists every track with its metadata and the cover whether or not the audio is on
 the phone. Tracks already in the library are marked and play from the library. For the rest:
 
-1. **Tap to play.** The app finds the song on YouTube Music (the same matcher the downloader
-   uses), starts streaming it at once, and queues the real file in the normal download queue. The
-   stream is a temporary row, hidden from the library, that disappears when the download lands
-   (or after 48 hours). Streaming plus the download means the song's bytes travel twice; on
-   mobile data that is worth knowing.
+1. **Tap to play from there.** Library copies play as they are. The first song you do not have
+   is found on YouTube Music (the same matcher the downloader uses), streams at once and downloads
+   behind the stream; every later missing song only downloads, and each joins the play queue in
+   release order as its file lands. The stream is a temporary row, hidden from the library, that
+   disappears when its download lands (or after 48 hours). One song's bytes travel twice; the rest
+   once.
 2. **The cloud icon** downloads without playing. *Download* on the release page queues every
    track you lack.
 

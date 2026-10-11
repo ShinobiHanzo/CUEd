@@ -303,7 +303,7 @@ interface FeedDao {
     @Query("DELETE FROM feed_artists WHERE name = :name COLLATE NOCASE")
     suspend fun deleteArtist(name: String)
 
-    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND dateMs <= :untilMs AND artist IN (SELECT name FROM feed_artists) ORDER BY dateMs DESC, fetchedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND dateMs <= :untilMs AND artist IN (SELECT name FROM feed_artists WHERE followed = 1) ORDER BY dateMs DESC, fetchedAt DESC LIMIT :limit")
     fun observeRecent(sinceMs: Long, untilMs: Long, limit: Int): Flow<List<ReleaseEntity>>
 
     @Query("SELECT * FROM releases WHERE artist = :artist COLLATE NOCASE ORDER BY dateMs DESC, title COLLATE NOCASE")
@@ -318,7 +318,7 @@ interface FeedDao {
     @Query("SELECT * FROM releases WHERE id = :id")
     fun observeRelease(id: String): Flow<ReleaseEntity?>
 
-    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND tracksFetchedAt = 0 ORDER BY dateMs DESC LIMIT :limit")
+    @Query("SELECT * FROM releases WHERE dateMs >= :sinceMs AND tracksFetchedAt = 0 AND artist IN (SELECT name FROM feed_artists WHERE followed = 1) ORDER BY dateMs DESC LIMIT :limit")
     suspend fun recentWithoutTracks(sinceMs: Long, limit: Int): List<ReleaseEntity>
 
     /** IGNORE, not REPLACE: a replace would delete the row and cascade away its tracks. */

@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,11 +83,11 @@ fun NewReleasesRow(fvm: FeedViewModel, onOpenRelease: (String) -> Unit) {
     val refreshing by fvm.refreshing.collectAsState()
     val note by fvm.note.collectAsState()
     Column {
-        SectionHeader("New releases", note ?: "From artists you play or follow") {
+        SectionHeader("New releases", note ?: "From the artists you follow") {
             if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             else IconButton(onClick = { fvm.refresh() }) { Icon(Icons.Default.Refresh, contentDescription = "Check for new releases") }
         }
-        if (releases.isEmpty()) EmptyHint(if (refreshing) "Checking for new releases…" else "Nothing new yet. Play some music or follow an artist, then pull the refresh.")
+        if (releases.isEmpty()) EmptyHint(if (refreshing) "Checking for new releases…" else "Nothing new from the artists you follow. Follow some below.")
         else LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             items(releases, key = { it.id }) { r -> ReleaseCard(r, Modifier.width(132.dp).padding(8.dp)) { onOpenRelease(r.id) } }
         }
@@ -96,11 +98,18 @@ fun NewReleasesRow(fvm: FeedViewModel, onOpenRelease: (String) -> Unit) {
 @Composable
 fun FollowedArtistsRow(fvm: FeedViewModel, onOpenArtist: (String) -> Unit) {
     val followed by fvm.followed.collectAsState()
+    val suggestions by fvm.suggestions.collectAsState()
     Column {
         SectionHeader("Your artists", "Followed artists and everything they release")
         if (followed.isEmpty()) EmptyHint("Open an artist and tap the star to follow them")
         else LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             items(followed, key = { it.name }) { a -> ArtistTile(fvm, a.name, Modifier.width(112.dp).padding(8.dp)) { onOpenArtist(a.name) } }
+        }
+        // One-tap follows for the artists you actually play.
+        if (suggestions.isNotEmpty()) LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            items(suggestions, key = { "s:$it" }) { name ->
+                AssistChip(onClick = { fvm.setFollowed(name, true) }, label = { Text("Follow $name") }, leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp)) }, modifier = Modifier.padding(horizontal = 4.dp))
+            }
         }
     }
 }
@@ -222,7 +231,7 @@ fun ArtistFeedScreen(fvm: FeedViewModel, name: String, onBack: () -> Unit, onOpe
 /** One release: cover, facts and its tracks; a tap plays (streaming while the file downloads) or opens the library copy. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onOpenArtist: (String) -> Unit, onPlay: (TrackEntity) -> Unit, onMessage: (String) -> Unit) {
+fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onOpenArtist: (String) -> Unit, onPlay: (List<TrackEntity>) -> Unit, onEnqueue: (TrackEntity) -> Unit, onMessage: (String) -> Unit) {
     LaunchedEffect(releaseId) { fvm.ensureTracks(releaseId) }
     val release by remember(releaseId) { fvm.release(releaseId) }.collectAsState(initial = null)
     val tracks by remember(releaseId) { fvm.tracks(releaseId) }.collectAsState(initial = emptyList())
@@ -248,14 +257,13 @@ fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onO
                         Text(r.artist, style = MaterialTheme.typography.bodyMedium, color = Teal, modifier = Modifier.clickable { onOpenArtist(r.artist) })
                         Text(listOf(r.type, ReleaseFeed.formatDate(r.date), if (tracks.isNotEmpty()) "${tracks.size} tracks" else null, if (owned > 0) "$owned in your library" else null).filterNotNull().joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Muted)
                         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val first = tracks.firstOrNull()
-                            Button(onClick = { first?.let { t -> copies[t.position]?.let(onPlay) ?: fvm.play(r, t, onPlay) } }, enabled = first != null && busy == null) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text("Play") }
+                            Button(onClick = { fvm.playFrom(r, tracks, 0, library, onPlay, onEnqueue) }, enabled = tracks.isNotEmpty() && busy == null) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text("Play") }
                             if (tracks.size > owned) OutlinedButton(onClick = { fvm.downloadMissing(tracks, library) }) { Icon(Icons.Default.CloudDownload, null); Spacer(Modifier.width(4.dp)); Text("Download") }
                         }
                     }
                 }
                 busy?.let { Text(it, color = Teal, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
-                Text("Metadata and cover from ${if (r.source == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}. Tap a track: the library copy plays if you have it; otherwise it streams from YouTube Music right away and the file downloads in the background.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                Text("Metadata and cover from ${if (r.source == ReleaseEntity.SOURCE_SPOTIFY) "Spotify" else "MusicBrainz"}. Tap a track to play from there: the first song you do not have streams right away while it downloads; the following ones download and join the queue as they land.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
             if (tracks.isEmpty()) item {
                 if (fetching) Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Fetching the track list…", color = Muted) }
@@ -267,7 +275,7 @@ fun ReleaseScreen(fvm: FeedViewModel, releaseId: String, onBack: () -> Unit, onO
             items(tracks, key = { it.position }) { t ->
                 val copy = copies[t.position]
                 Row(
-                    Modifier.fillMaxWidth().clickable(enabled = busy == null) { copy?.let(onPlay) ?: fvm.play(r, t, onPlay) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().clickable(enabled = busy == null) { fvm.playFrom(r, tracks, tracks.indexOf(t), library, onPlay, onEnqueue) }.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("${t.position}", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.width(28.dp))

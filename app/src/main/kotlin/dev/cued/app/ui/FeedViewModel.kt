@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /** New releases, followed artists and release pages, for the home page and the feed screens. */
@@ -34,8 +37,12 @@ class FeedViewModel(private val graph: Graph) : ViewModel() {
     /** Artist names and release ids whose fetch is running right now. */
     val fetchingArtists = MutableStateFlow<Set<String>>(emptySet())
     val fetchingReleases = MutableStateFlow<Set<String>>(emptySet())
+    /** Artists you play but do not follow yet. */
+    val suggestions = MutableStateFlow<List<String>>(emptyList())
 
-    init { feed.refreshIfStaleAsync() }
+    init { feed.refreshIfStaleAsync(); loadSuggestions() }
+
+    fun loadSuggestions() = viewModelScope.launch { suggestions.value = runCatching { feed.suggestions() }.getOrDefault(emptyList()) }
 
     fun refresh() { feed.refreshAsync(force = true) }
     fun refreshArtist(name: String) = viewModelScope.launch {
@@ -55,13 +62,40 @@ class FeedViewModel(private val graph: Graph) : ViewModel() {
         fetchingReleases.value += id
         try { if (!feed.ensureTracks(id, force) && force) message.tryEmit("Offline: no connection for the track list") } finally { fetchingReleases.value -= id }
     }
-    fun setFollowed(name: String, on: Boolean) = viewModelScope.launch { feed.follow(name, on); message.tryEmit(if (on) "Following $name" else "Unfollowed $name") }
+    fun setFollowed(name: String, on: Boolean) = viewModelScope.launch { feed.follow(name, on); message.tryEmit(if (on) "Following $name" else "Unfollowed $name"); loadSuggestions() }
     fun libraryCopy(t: ReleaseTrackEntity, library: List<TrackEntity>): TrackEntity? = feed.matchInLibrary(t, library)
 
-    /** Plays a release track: the library copy when there is one, else a stream that downloads in the background. */
-    fun play(release: ReleaseEntity, t: ReleaseTrackEntity, onReady: (TrackEntity) -> Unit) = viewModelScope.launch {
-        busy.value = "Finding ${t.title}…"
-        feed.stream(release, t).fold({ busy.value = null; onReady(it) }, { busy.value = null; message.tryEmit("Could not play: ${it.message}") })
+    /**
+     * Plays a release from [start]. Library copies play as they are. Exactly one
+     * song that is not on the phone, the first one reached, streams at once
+     * (and downloads behind it); every later missing song only downloads and
+     * joins the queue, in release order, as its file lands.
+     */
+    fun playFrom(release: ReleaseEntity, tracks: List<ReleaseTrackEntity>, start: Int, library: List<TrackEntity>, onPlay: (List<TrackEntity>) -> Unit, onEnqueue: (TrackEntity) -> Unit) = viewModelScope.launch {
+        val order = tracks.drop(start.coerceIn(0, tracks.size))
+        val first = order.firstOrNull() ?: return@launch
+        var streamed = false
+        val firstEntity = libraryCopy(first, library) ?: run {
+            streamed = true
+            busy.value = "Finding ${first.title}…"
+            val r = feed.stream(release, first)
+            busy.value = null
+            r.getOrElse { message.tryEmit("Could not play: ${it.message}"); return@launch }
+        }
+        onPlay(listOf(firstEntity))
+        val waits = ArrayList<Deferred<TrackEntity?>>()
+        var downloads = 0
+        for (t in order.drop(1)) {
+            val local = libraryCopy(t, library)
+            waits += when {
+                local != null -> CompletableDeferred(local)
+                !streamed -> { streamed = true; async { feed.stream(release, t).getOrNull() } }
+                else -> { downloads++; async { feed.awaitDownloaded(feed.download(t), t) } }
+            }
+        }
+        if (downloads > 0) message.tryEmit("Downloading $downloads more track${if (downloads == 1) "" else "s"}; each joins the queue when it lands")
+        // Awaiting in order keeps the release order even when downloads finish out of turn.
+        for (d in waits) d.await()?.let(onEnqueue)
     }
 
     fun download(t: ReleaseTrackEntity) { feed.download(t); message.tryEmit("Queued ${t.title}") }

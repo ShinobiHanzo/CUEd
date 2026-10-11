@@ -187,9 +187,9 @@ class FeedRepository(private val graph: Graph) {
     }
 
     /**
-     * One pass: the artists you listen to join the watch list, stale artists
-     * are re-read from MusicBrainz, and the newest releases get their track
-     * lists so the home row can play straight away.
+     * One pass over the artists you follow: stale ones are re-read from the
+     * source, and their newest releases get track lists so the home row can
+     * play straight away. Artists you merely opened refresh when opened.
      */
     suspend fun refresh(force: Boolean) {
         if (!refreshMutex.tryLock()) return
@@ -199,8 +199,7 @@ class FeedRepository(private val graph: Graph) {
             if (!s.enabled) { _note.value = "Feeds are off in Settings"; return }
             if (!online(s)) { _note.value = "Waiting for Wi-Fi"; return }
             val now = System.currentTimeMillis()
-            for (name in listenedArtists()) if (dao.artist(name) == null) dao.upsertArtist(FeedArtistEntity(name, null, false, now))
-            val stale = dao.allArtists().filter { force || now - it.lastRefreshAt > ARTIST_TTL_MS }.sortedBy { it.lastRefreshAt }.take(MAX_ARTISTS_PER_RUN)
+            val stale = dao.allArtists().filter { it.followed && (force || now - it.lastRefreshAt > ARTIST_TTL_MS) }.sortedBy { it.lastRefreshAt }.take(MAX_ARTISTS_PER_RUN)
             var checked = 0
             for (a in stale) if (refreshArtist(a.name, force = true, background = true)) checked++
             for (r in dao.recentWithoutTracks(now - ReleaseFeed.RECENT_DAYS * ReleaseFeed.DAY_MS, MAX_TRACKLISTS_PER_RUN)) ensureTracks(r.id, background = true)
@@ -210,6 +209,12 @@ class FeedRepository(private val graph: Graph) {
             _refreshing.value = false
             refreshMutex.unlock()
         }
+    }
+
+    /** Artists you play but do not follow yet, best first: one-tap follow suggestions. */
+    suspend fun suggestions(limit: Int = 6): List<String> {
+        val followed = dao.allArtists().filter { it.followed }.map { it.name.lowercase() }.toSet()
+        return listenedArtists().filter { it.lowercase() !in followed }.take(limit)
     }
 
     /** Artists you play, ranked: recent plays weigh most, then lifetime plays, then how much of them you own. */
@@ -269,20 +274,36 @@ class FeedRepository(private val graph: Graph) {
         }
     }
 
-    /** Download without playing: a Spotify track link when known (full metadata), else a YouTube Music search for artist and title. */
-    fun download(t: ReleaseTrackEntity) = graph.downloads.enqueue(downloadSource(t) ?: "${t.artist} - ${t.title}", t.title, t.artist)
+    /**
+     * Download without playing: a Spotify track link when known (full metadata),
+     * else a YouTube Music search for artist and title. Returns the queued
+     * source, for [awaitDownloaded].
+     */
+    fun download(t: ReleaseTrackEntity): String {
+        val source = downloadSource(t) ?: "${t.artist} - ${t.title}"
+        graph.downloads.enqueue(source, t.title, t.artist)
+        return source
+    }
 
     private fun downloadSource(t: ReleaseTrackEntity): String? = t.spotifyId?.let { "https://open.spotify.com/track/$it" }
 
-    /** Once the background download has produced a library file, the temporary stream row goes. */
-    private fun retireWhenDownloaded(tempId: Long, source: String, t: ReleaseTrackEntity) = graph.appScope.launch {
+    /**
+     * Waits for the download queued from [source] to finish and returns the
+     * library track it produced; null when it failed, or after two hours.
+     */
+    suspend fun awaitDownloaded(source: String, t: ReleaseTrackEntity): TrackEntity? {
         val src = SourceLinks.canonical(source)
         val job = withTimeoutOrNull(2 * 60 * 60 * 1000L) {
             graph.downloads.jobs.mapNotNull { jobs -> jobs.firstOrNull { it.source == src && (it.status == "DONE" || it.status == "FAILED") } }.first()
-        } ?: return@launch
-        if (job.status != "DONE") return@launch
-        val real = db.tracks().addedSince(job.createdAt - 60_000L).firstOrNull { it.kind == TrackEntity.KIND_MUSIC && ReleaseFeed.sameTrack(t.title, t.artist, it.title, it.artist) }
-            ?: libraryCopy(t) ?: return@launch
+        } ?: return null
+        if (job.status != "DONE") return null
+        return db.tracks().addedSince(job.createdAt - 60_000L).firstOrNull { it.kind == TrackEntity.KIND_MUSIC && ReleaseFeed.sameTrack(t.title, t.artist, it.title, it.artist) }
+            ?: libraryCopy(t)
+    }
+
+    /** Once the background download has produced a library file, the temporary stream row goes. */
+    private fun retireWhenDownloaded(tempId: Long, source: String, t: ReleaseTrackEntity) = graph.appScope.launch {
+        val real = awaitDownloaded(source, t) ?: return@launch
         if (real.id != tempId) db.tracks().deleteById(tempId)
     }
 

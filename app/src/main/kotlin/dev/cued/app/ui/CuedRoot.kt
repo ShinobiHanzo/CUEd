@@ -389,7 +389,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                     val id = java.net.URLDecoder.decode(e.arguments!!.getString("id")!!, "UTF-8")
                     ReleaseScreen(fvm, id, onBack = { nav.popBackStack() },
                         onOpenArtist = { nav.navigate("feed/artist/${URLEncoder.encode(it, "UTF-8")}") },
-                        onPlay = { t -> pvm.play(listOf(t)); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+                        onPlay = { list -> pvm.play(list); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
+                        onEnqueue = { t -> pvm.enqueue(listOf(t)) },
                         onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
                 composable("album/{artist}/{album}") { e ->
