@@ -62,7 +62,7 @@ import androidx.navigation.navArgument
 import dev.cued.app.Graph
 import dev.cued.app.data.SmartList
 import dev.cued.app.data.db.TrackEntity
-import dev.cued.app.ui.components.FloatingMiniPlayer
+import dev.cued.app.ui.components.MiniPlayer
 import dev.cued.app.ui.components.ReceivedSplash
 import dev.cued.app.ui.screens.StationScreen
 import dev.cued.app.ui.screens.FollowingScreen
@@ -74,7 +74,6 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.People
-import androidx.compose.ui.Alignment
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
@@ -230,10 +229,6 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     // so the current track is always one tap away while browsing an artist or searching.
     val showChrome = route != Route.NOW_PLAYING
     val rootTitle = Route.topBarTitles[route]
-    // The floating mini player hides on × until the next track starts.
-    var miniHiddenFor by remember { mutableStateOf<Long?>(null) }
-    val uiSettings by pvm.uiSettings.collectAsState()
-    val lyrics by pvm.lyrics.collectAsState()
     val friends by dkvm.friends.collectAsState()
     val desktops by dkvm.desktops.collectAsState()
     val activeDownloads by dvm.activeCount.collectAsState()
@@ -327,6 +322,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         },
         bottomBar = {
             if (showChrome) Column {
+                MiniPlayer(player, currentTrack, onOpen = { nav.navigate(Route.NOW_PLAYING) }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onPrevious = { pvm.previous() })
                 NavigationBar {
                     Tab.entries.forEach { t ->
                         NavigationBarItem(
@@ -479,12 +475,6 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
             }
-            // The floating mini player: bottom-right, over whatever screen is open, until × or the full player.
-            if (showChrome && player.trackId != null && miniHiddenFor != player.trackId) FloatingMiniPlayer(
-                state = player, track = currentTrack, bus = pvm.spectrumBus, visualDelayMs = uiSettings.visualDelayMs, lyrics = lyrics,
-                onOpen = { nav.navigate(Route.NOW_PLAYING) }, onToggle = { pvm.togglePlay() }, onNext = { pvm.next() }, onClose = { miniHiddenFor = player.trackId },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
-            )
         }
     }
     } // ModalNavigationDrawer

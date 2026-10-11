@@ -22,7 +22,7 @@ The wire protocol lives in that repository's `docs/protocol.md`; this page is th
 | Listening in with the host's `stream` / `cover` / `lyrics` capability links | the listener's cache tries the stream URL first, then the downloader; 48-hour retention | `station/StationCache.kt`, `core/station/Station.kt` |
 | Shared settings: relay switch (off by default), friend streaming, theme colours, station name | Desktop screen toggles; theme applied live; relay URL added/removed from the Stations relay list | `DesktopService.applyShared` |
 | Theme colours sub-page | Settings → Developer mode → Theme colours | `ui/theme/Theme.kt`, `ui/screens/SettingsScreen.kt` |
-| Floating mini player: 150×150 dp bottom-right, spectrograph at 30 % over the cover; italic *L* grows it to 150×400 with blurred cover and synced lyrics | every screen but the full player; × hides it until the next track | `ui/components/FloatingMiniPlayer.kt` |
+| Floating 150×150 mini player with the spectrograph and synced lyrics | desktop only; the phone keeps its banner mini player above the tab bar | `ui/components/MiniPlayer.kt` (unchanged) |
 | Desktop pulls a track from the Share screen; pushes one with its ⇪ button; spotdl companion; plain NIP-01 relay | unchanged from before | share server, Receive screen, Downloads backend, Stations relays |
 
 The core half (`core/desktop/*`: `PairLink`, `FriendLink`, `Seal`, `AccountChain`, `Assertion`,
