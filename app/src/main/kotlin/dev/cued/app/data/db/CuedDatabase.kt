@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TrackEntity::class, TrackGenreEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class, PlayEventEntity::class, DownloadJobEntity::class, LyricsEntity::class, FeedArtistEntity::class, ReleaseEntity::class, ReleaseTrackEntity::class],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class CuedDatabase : RoomDatabase() {
@@ -75,9 +75,16 @@ abstract class CuedDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `download_jobs` ADD COLUMN `playlistId` INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE `download_jobs` ADD COLUMN `playlistPosition` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun build(context: Context): CuedDatabase =
             Room.databaseBuilder(context, CuedDatabase::class.java, "cued.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .fallbackToDestructiveMigration()
                 .build()
     }

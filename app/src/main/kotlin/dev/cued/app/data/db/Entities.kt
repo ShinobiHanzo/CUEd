@@ -116,6 +116,9 @@ data class DownloadJobEntity(
     val remoteJobId: String? = null,
     /** Cover/thumbnail for the job row, once known (Spotify cover or YouTube thumbnail). */
     @ColumnInfo(defaultValue = "NULL") val artworkUrl: String? = null,
+    /** The CUEd playlist this track joins when it lands (a playlist link being rebuilt), and its slot in it. */
+    @ColumnInfo(defaultValue = "NULL") val playlistId: Long? = null,
+    @ColumnInfo(defaultValue = "0") val playlistPosition: Int = 0,
 )
 
 /** Lyrics for a track. [synced] is LRC text when available; [source] is embedded / sidecar / lrclib / none. */

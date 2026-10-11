@@ -153,6 +153,9 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :id")
     suspend fun byId(id: Long): PlaylistEntity?
 
+    @Query("SELECT * FROM playlists WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun byName(name: String): PlaylistEntity?
+
     @Insert
     suspend fun insert(p: PlaylistEntity): Long
 

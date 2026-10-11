@@ -39,7 +39,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             }
             link.platform == Platform.SPOTIFY && link.type == LinkType.PLAYLIST && id != null -> {
                 val c = spotify.playlist(id)
-                LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Playlist \"${c.name}\": ${c.tracks.size} tracks")
+                LinkResolver.Result.Expanded(c.tracks.map { item(it) }, "Playlist \"${c.name}\": ${c.tracks.size} tracks", playlistName = c.name)
             }
             (link.platform == Platform.YOUTUBE || link.platform == Platform.YOUTUBE_MUSIC) && link.type == LinkType.PLAYLIST -> {
                 val ex = org.schabi.newpipe.extractor.ServiceList.YouTube.getPlaylistExtractor(link.url)
@@ -49,7 +49,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 items += page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
                 var guard = 0
                 while (page.hasNextPage() && items.size < 300 && guard++ < 10) { page = ex.getPage(page.nextPage); items += page.items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>() }
-                LinkResolver.Result.Expanded(items.map { LinkResolver.Item(it.url, it.name, it.uploaderName, it.thumbnails.maxByOrNull { th -> th.width }?.url) }, "YouTube playlist \"${ex.name}\": ${items.size} videos")
+                LinkResolver.Result.Expanded(items.map { LinkResolver.Item(it.url, it.name, it.uploaderName, it.thumbnails.maxByOrNull { th -> th.width }?.url) }, "YouTube playlist \"${ex.name}\": ${items.size} videos", playlistName = ex.name)
             }
             else -> null
         }

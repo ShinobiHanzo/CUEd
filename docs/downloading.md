@@ -149,3 +149,12 @@ file, then writes the `ilst` metadata itself (`core/tag/Mp4Tags`, unit-tested). 
 tags come from `core/tag/Id3v2`. There is no third-party tag library in the app any
 more. Nothing is imported into the library until the platform extractor confirms it
 plays, and a queue stops after five unplayable items in a row instead of cycling.
+
+## Playlists come back as playlists
+
+Share a Spotify, YouTube or Deezer **playlist** link and CUEd does more than queue its tracks: it
+creates a playlist of the same name (or reuses one that already has that name) and gives every
+track its slot in the original order. Tracks the library already has go in at once without a
+download; the rest join the playlist the moment their file lands, so a half-finished import is
+already a playable playlist that fills in as the queue drains. Album links are not turned into
+playlists: albums group themselves by their tags.

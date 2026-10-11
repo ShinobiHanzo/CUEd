@@ -12,6 +12,9 @@ import dev.cued.app.util.DebugLog
 import dev.cued.app.Graph
 import dev.cued.app.data.DownloadBackend
 import dev.cued.app.data.db.DownloadJobEntity
+import dev.cued.app.data.db.PlaylistTrackEntity
+import dev.cued.core.feed.ReleaseFeed
+import dev.cued.core.library.Discography
 import dev.cued.core.share.SourceLinks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,12 +155,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 }
                 is LinkResolver.Result.Expanded -> {
                     // A playlist/album from a platform spotdl can't read: one job per track.
-                    for (item in resolved.items) {
-                        db.downloads().insert(
-                            DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis(), artworkUrl = item.artworkUrl)
-                        )
-                    }
-                    db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = resolved.note, finishedAt = System.currentTimeMillis()))
+                    expandIntoJobs(job, backend, resolved)
                     continue
                 }
                 is LinkResolver.Result.Direct -> resolved.source
@@ -178,8 +176,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                 }
                 val expanded = expandedResult.getOrNull()
                 if (expanded != null) {
-                    for (item in expanded.items) db.downloads().insert(DownloadJobEntity(source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = System.currentTimeMillis(), artworkUrl = item.artworkUrl))
-                    db.downloads().update(job.copy(status = STATUS_DONE, progress = 1f, message = expanded.note, finishedAt = System.currentTimeMillis()))
+                    expandIntoJobs(job, backend, expanded)
                     continue
                 }
             }
@@ -205,7 +202,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                         DebugLog.i(TAG, "job #${job.id} done: ${outcome.summary} ids=${outcome.mediaStoreIds}")
                         db.downloads().finish(job.id, STATUS_DONE, 1f, outcome.summary, System.currentTimeMillis())
                         activeJobs -= job.id
-                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId, outcome.metaByMediaStoreId)
+                        afterFilesArrived(outcome.mediaStoreIds, if (source.startsWith("http")) source else job.source, job.createdAt, outcome.lrcByBase, outcome.genresByMediaStoreId, outcome.metaByMediaStoreId, job)
                     }
                 }
             }
@@ -220,13 +217,55 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
             db.downloads().finish(jobId, if (ok) STATUS_DONE else STATUS_FAILED, if (ok) 1f else j.progress, message, System.currentTimeMillis())
             if (ok) {
                 scanDownloadFolder()
-                afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap(), emptyMap())
+                afterFilesArrived(emptyList(), j.source, j.createdAt, emptyMap(), emptyMap(), job = j)
             }
             pump()
         }
     }
 
-    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>, genresByMediaStoreId: Map<Long, List<String>> = emptyMap(), metaByMediaStoreId: Map<Long, KnownMeta> = emptyMap()) {
+    /**
+     * A playlist or album link became one job per track. For a playlist, a
+     * CUEd playlist of the same name is created (or reused) and every track
+     * gets its slot in it: tracks the library already has go in at once,
+     * the rest when their download lands, so the playlist rebuilds itself in
+     * the original order.
+     */
+    private suspend fun expandIntoJobs(parent: DownloadJobEntity, backend: DownloadBackend, expanded: LinkResolver.Result.Expanded) {
+        val now = System.currentTimeMillis()
+        val name = expanded.playlistName?.trim()?.takeIf { it.isNotEmpty() }
+        var playlistId: Long? = null
+        var base = 0
+        if (name != null) {
+            playlistId = db.playlists().byName(name)?.id ?: graph.library.createPlaylist(name, "Rebuilt from ${parent.source}")
+            base = (db.playlists().rows(playlistId).maxOfOrNull { it.position } ?: -1) + 1
+        }
+        var alreadyHave = 0
+        for ((i, item) in expanded.items.withIndex()) {
+            val position = base + i
+            if (playlistId != null && item.title != null && item.artist != null) {
+                val have = db.tracks().musicByTitleArtist(item.title, item.artist)
+                    ?: db.tracks().musicByArtist(Discography.primaryArtist(item.artist.substringBefore(','))).firstOrNull { ReleaseFeed.sameTrack(item.title, item.artist, it.title, it.artist) }
+                if (have != null) {
+                    db.playlists().insertRow(PlaylistTrackEntity(playlistId, have.id, position))
+                    alreadyHave++
+                    continue
+                }
+            }
+            db.downloads().insert(DownloadJobEntity(
+                source = item.source, title = item.title, artist = item.artist, backend = backend.name, status = STATUS_QUEUED, createdAt = now,
+                artworkUrl = item.artworkUrl, playlistId = playlistId, playlistPosition = position,
+            ))
+        }
+        val note = buildString {
+            append(expanded.note)
+            if (name != null) append(" → playlist \"$name\" rebuilds as tracks land")
+            if (alreadyHave > 0) append(" · $alreadyHave already in the library")
+        }
+        DebugLog.i(TAG, "job #${parent.id} expanded: ${expanded.items.size} items, playlist=$name, have=$alreadyHave")
+        db.downloads().update(parent.copy(status = STATUS_DONE, progress = 1f, message = note, finishedAt = now))
+    }
+
+    private suspend fun afterFilesArrived(mediaStoreIds: List<Long>, source: String, since: Long, lrcByBase: Map<String, String>, genresByMediaStoreId: Map<Long, List<String>> = emptyMap(), metaByMediaStoreId: Map<Long, KnownMeta> = emptyMap(), job: DownloadJobEntity? = null) {
         graph.library.rescan()
         // MediaStore sometimes publishes a row before it has read the tags; our own tags win until it catches up.
         for ((msId, m) in metaByMediaStoreId) db.tracks().byMediaStoreId(msId)?.let { t ->
@@ -238,6 +277,8 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
         // Which tracks are new? Companion tells us the MediaStore ids; Termux doesn't, so fall back to "added since the job started".
         val tracks = if (mediaStoreIds.isNotEmpty()) mediaStoreIds.mapNotNull { db.tracks().byMediaStoreId(it) }
         else db.tracks().addedSince(since - 60_000L)
+        // A playlist being rebuilt: the track takes its slot (the playlist may have been deleted meanwhile).
+        job?.playlistId?.let { pid -> if (db.playlists().byId(pid) != null) for (t in tracks) db.playlists().insertRow(PlaylistTrackEntity(pid, t.id, job.playlistPosition)) }
         val ds = graph.settings.downloadNow()
         val ls = graph.settings.lyricsNow()
         for (t in tracks) {
