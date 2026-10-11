@@ -29,14 +29,16 @@ the phone. Tracks already in the library are marked and play from the library. F
 
 | | Spotify (your keys) | MusicBrainz (default) |
 |---|---|---|
-| Needs | a free developer app at developer.spotify.com; client id and secret under Downloads → Built-in | nothing |
+| Needs | Settings → Developer mode on, a free developer app at developer.spotify.com, client id and secret under Downloads → Built-in | nothing |
 | Release dates | to the day, singles the day they drop | often the year only for recent singles; volunteers enter data |
 | Covers | always | Cover Art Archive, missing for many smaller releases |
 | Downloads | queued as Spotify track links, so the file gets Spotify's title, album, cover and genres | queued as an artist-and-title search |
 | Caveats | Spotify has been tightening development-mode access since late 2024, and its terms frown on using the catalogue to fetch audio elsewhere; your keys, your call | one request per second, so a first pass over many artists takes a minute |
 
-Settings → *New releases & artist feeds* → *Metadata source*: **Auto** picks Spotify when keys are
-set, or force either. Switching sources re-reads each artist on its next refresh.
+Spotify is a **developer-mode** source: with Developer mode off the feed is MusicBrainz only and
+the key fields are hidden (saved keys are kept, not used). With it on, Settings → *New releases &
+artist feeds* → *Metadata source*: **Auto** picks Spotify when keys are set, or force either.
+Switching sources re-reads each artist on its next refresh.
 
 ## What goes online
 

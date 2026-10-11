@@ -135,10 +135,13 @@ class FeedRepository(private val graph: Graph) {
         DebugLog.d(TAG, "${a.name}: ${kept.size} releases (Spotify)")
     }
 
-    /** Which metadata source a refresh uses right now: the setting, with Auto meaning Spotify when its keys are set. */
+    /**
+     * Which metadata source a refresh uses right now. Spotify needs Developer
+     * mode and its keys; otherwise, whatever the setting says, MusicBrainz.
+     */
     suspend fun source(): String {
         val s = graph.settings.feedNow()
-        val keys = spotify() != null
+        val keys = graph.settings.devMode.first() && spotify() != null
         return when (s.source) {
             FeedSettings.SOURCE_SPOTIFY -> if (keys) ReleaseEntity.SOURCE_SPOTIFY else ReleaseEntity.SOURCE_MUSICBRAINZ
             FeedSettings.SOURCE_MUSICBRAINZ -> ReleaseEntity.SOURCE_MUSICBRAINZ

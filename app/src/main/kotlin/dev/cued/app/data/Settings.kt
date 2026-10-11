@@ -259,8 +259,9 @@ class Settings(private val context: Context) {
             format = p[K.format] ?: "mp3",
             generateLrc = p[K.generateLrc] ?: false,
             fetchLyricsAfter = p[K.fetchLyricsAfter] ?: true,
-            spotifyClientId = p[K.spotifyId]?.takeIf { it.isNotBlank() },
-            spotifyClientSecret = p[K.spotifySecret]?.takeIf { it.isNotBlank() },
+            // The Spotify Web API is a developer-mode feature: the saved keys stay put but are not handed out while it is off.
+            spotifyClientId = if (dev) p[K.spotifyId]?.takeIf { it.isNotBlank() } else null,
+            spotifyClientSecret = if (dev) p[K.spotifySecret]?.takeIf { it.isNotBlank() } else null,
             enrichOnline = p[K.enrich] ?: true,
         )
     }

@@ -113,12 +113,16 @@ fun DownloadsScreen(vm: DownloadViewModel, initialSource: String? = null, onSour
             when (settings.backend) {
                 DownloadBackend.BUILT_IN -> Column(Modifier.padding(16.dp)) {
                     Text("No setup. Finds the track on YouTube Music, downloads the AAC stream as .m4a, writes title, artist, album and cover into the file.", color = Teal)
-                    Text("Spotify links work without keys via the public embed page. Add your own free Spotify developer keys for long playlists and genre tags (developer.spotify.com → Create app).", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 6.dp))
-                    var sid by remember(settings.spotifyClientId) { mutableStateOf(settings.spotifyClientId.orEmpty()) }
-                    var ssec by remember(settings.spotifyClientSecret) { mutableStateOf(settings.spotifyClientSecret.orEmpty()) }
-                    OutlinedTextField(value = sid, onValueChange = { sid = it }, singleLine = true, label = { Text("Spotify client ID (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                    OutlinedTextField(value = ssec, onValueChange = { ssec = it }, singleLine = true, label = { Text("Spotify client secret (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                    TextButton(onClick = { vm.setSpotifyKeys(sid, ssec) }) { Text("Save keys") }
+                    if (settings.devMode) {
+                        Text("Spotify links work without keys via the public embed page. Your own Spotify developer keys (developer.spotify.com → Create app) add long playlists, genre tags and the Spotify release feed. Developer mode only.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                        var sid by remember(settings.spotifyClientId) { mutableStateOf(settings.spotifyClientId.orEmpty()) }
+                        var ssec by remember(settings.spotifyClientSecret) { mutableStateOf(settings.spotifyClientSecret.orEmpty()) }
+                        OutlinedTextField(value = sid, onValueChange = { sid = it }, singleLine = true, label = { Text("Spotify client ID (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                        OutlinedTextField(value = ssec, onValueChange = { ssec = it }, singleLine = true, label = { Text("Spotify client secret (optional)") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                        TextButton(onClick = { vm.setSpotifyKeys(sid, ssec) }) { Text("Save keys") }
+                    } else {
+                        Text("Spotify links are read from the public embed page; no account or keys needed.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                    }
                     val ntest by vm.nativeTest.collectAsState()
                     TextButton(onClick = { vm.testNative() }) { Text("Test built-in downloader") }
                     ntest?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.endsWith("OK")) Teal else Muted) }

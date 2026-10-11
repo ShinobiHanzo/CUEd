@@ -140,15 +140,16 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         }
 
         val feed by vm.feed.collectAsState()
-        SectionHeader("New releases & artist feeds", "MusicBrainz (open data, no key) lists what your artists put out; audio comes from YouTube Music only when you play or download a track")
+        SectionHeader("New releases & artist feeds", "What your artists put out, from open data; audio comes from YouTube Music only when you play or download a track")
         ToggleRow("Show on the home page", "New releases from artists you play or follow, and your followed artists' pages", feed.enabled) { vm.setFeedEnabled(it) }
         ToggleRow("Refresh on mobile data", "Off: feeds update on Wi-Fi only. A few small requests per artist, about once a day.", feed.onMobile) { vm.setFeedOnMobile(it) }
         val spotifyKeys by vm.spotifyKeysSet.collectAsState()
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        val feedDev by vm.devMode.collectAsState()
+        if (feedDev) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             Text("Metadata source", style = MaterialTheme.typography.labelLarge)
             Text(
                 if (spotifyKeys) "Spotify keys are set (Downloads → Built-in): Auto uses Spotify, which knows release dates to the day and always has covers."
-                else "No Spotify keys yet, so Auto uses MusicBrainz. Add your own free Spotify developer keys under Downloads → Built-in and Auto switches to Spotify.",
+                else "No Spotify keys yet, so Auto uses MusicBrainz. Add your own Spotify developer keys under Downloads → Built-in and Auto switches to Spotify.",
                 style = MaterialTheme.typography.bodySmall, color = Muted,
             )
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -156,7 +157,7 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
                     FilterChip(selected = feed.source == key, onClick = { vm.setFeedSource(key) }, label = { Text(label) }, enabled = key != FeedSettings.SOURCE_SPOTIFY || spotifyKeys)
                 }
             }
-        }
+        } else Text("Metadata comes from MusicBrainz, open data with no account. Developer mode adds Spotify as a source, with your own keys.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         TextButton(onClick = { vm.refreshFeed() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Check for new releases now") }
 
         SectionHeader("Library", if (pending > 0) "$pending track(s) waiting for analysis" else "Tempo + spectrogram analysis runs on-device, one track at a time")
@@ -183,7 +184,7 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
         UpdateBlock(vm)
 
-        SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools, and the theme colours below can be changed.")
+        SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools; Spotify API keys and the Spotify release feed become available; and the theme colours below can be changed.")
         DevModeBlock(vm)
         val devOn by vm.devMode.collectAsState()
         if (devOn) {
