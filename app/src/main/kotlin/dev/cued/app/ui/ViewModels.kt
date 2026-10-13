@@ -319,7 +319,7 @@ class DownloadViewModel(private val graph: Graph) : ViewModel() {
     fun setGenerateLrc(on: Boolean) = viewModelScope.launch { graph.settings.setGenerateLrc(on) }
     fun setFetchLyricsAfter(on: Boolean) = viewModelScope.launch { graph.settings.setFetchLyricsAfter(on) }
     fun rescanFolder() = viewModelScope.launch { graph.downloads.scanDownloadFolder(); graph.library.rescan() }
-    suspend fun pingCompanion(): Result<String> = CompanionDownloader(graph.app, settings.value.companionUrl, settings.value.format).ping()
+    suspend fun pingCompanion(): Result<String> = CompanionDownloader(graph.app, settings.value.companionUrl, settings.value.format, CompanionDownloader.tokenFor(settings.value.companionUrl, graph.desktop.store.desktops.first())).ping()
     fun enqueueShared(text: String) = graph.downloads.enqueue(text)
     val termuxTest: StateFlow<String?> = graph.downloads.termuxTest
     val nativeTest: StateFlow<String?> = graph.downloads.nativeTest

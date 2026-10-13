@@ -19,6 +19,7 @@ import dev.cued.core.share.SourceLinks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -187,7 +188,7 @@ class DownloadManager(private val context: Context, private val graph: Graph) {
                     DownloadBackend.BUILT_IN -> native!!.download(job, source, settings.format, onProgress = progressWriter(job.id),
                         onArtwork = { url -> graph.appScope.launch { db.downloads().setArtwork(job.id, url) } })
                     DownloadBackend.TERMUX -> TermuxDownloader(context).start(job, source, settings.format, settings.generateLrc)
-                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format).run(job, source, settings.generateLrc, progressWriter(job.id))
+                    DownloadBackend.COMPANION -> CompanionDownloader(context, settings.companionUrl, settings.format, CompanionDownloader.tokenFor(settings.companionUrl, graph.desktop.store.desktops.first())).run(job, source, settings.generateLrc, progressWriter(job.id))
                 }
             }
             result.onFailure { e ->

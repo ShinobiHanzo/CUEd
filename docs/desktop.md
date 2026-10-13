@@ -23,7 +23,8 @@ The wire protocol lives in that repository's `docs/protocol.md`; this page is th
 | Shared settings: relay switch (off by default), friend streaming, theme colours, station name | Desktop screen toggles; theme applied live; relay URL added/removed from the Stations relay list | `DesktopService.applyShared` |
 | Theme colours sub-page | Settings → Developer mode → Theme colours | `ui/theme/Theme.kt`, `ui/screens/SettingsScreen.kt` |
 | Floating 150×150 mini player with the spectrograph and synced lyrics | desktop only; the phone keeps its banner mini player above the tab bar | `ui/components/MiniPlayer.kt` (unchanged) |
-| Desktop pulls a track from the Share screen; pushes one with its ⇪ button; spotdl companion; plain NIP-01 relay | unchanged from before | share server, Receive screen, Downloads backend, Stations relays |
+| Desktop pulls a track from the Share screen; pushes one with its ⇪ button; plain NIP-01 relay | unchanged from before | share server, Receive screen, Stations relays |
+| spotdl companion (desktop 0.2.4+ serves it to paired phones only) | Downloads → Companion (LAN) sends the token of the paired desktop whose address matches | `download/CompanionDownloader.tokenFor` |
 
 The core half (`core/desktop/*`: `PairLink`, `FriendLink`, `Seal`, `AccountChain`, `Assertion`,
 `DesktopClient`, the manifest types) is pure JVM and covered by unit tests, including a fake

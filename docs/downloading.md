@@ -75,6 +75,11 @@ if ffmpeg isn't on the PATH, spotdl fetches its own copy. The console prints the
 `http://ip:8766` to enter in the app.
 
 CUEd → Downloads → Backend → **Companion (LAN)** → enter `http://<that-machine-ip>:8766`
+
+With the CUEd desktop (`cuedd`, 0.2.4 or later) the address is `http://<desktop-ip>:8770` and the
+desktop only serves the downloader to a phone it is paired with: CUEd sends the pairing token of
+the desktop whose LAN address matches, so pair first (Desktop → Scan). A desktop can instead allow
+unpaired devices on its Wi-Fi in its Downloads tab.
 → Test. Downloads run on the computer and the finished files are pulled over to
 `Music/CUEd` by the phone. Good for weak phones and for bulk playlist pulls.
 

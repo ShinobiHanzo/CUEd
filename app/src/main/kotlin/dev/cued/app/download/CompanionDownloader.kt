@@ -19,8 +19,11 @@ import java.net.URLEncoder
  *   GET  /jobs/{id}       -> {"status": "queued|running|done|failed", "progress": 0..1, "message": "...", "files": ["name.mp3", ...]}
  *   GET  /files/{name}    -> the audio bytes
  */
-class CompanionDownloader(private val context: Context, private val baseUrl: String, private val format: String) {
+class CompanionDownloader(private val context: Context, private val baseUrl: String, private val format: String, private val token: String? = null) {
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** The CUEd desktop (0.2.4+) only serves the downloader to a paired phone; its pairing token rides along. */
+    private fun HttpURLConnection.authorise() = apply { token?.takeIf { it.isNotBlank() }?.let { setRequestProperty("Authorization", "Bearer $it") } }
 
     @Serializable private data class JobRequest(val url: String, val format: String, val lrc: Boolean = false)
     @Serializable private data class JobCreated(val id: String)
@@ -49,7 +52,7 @@ class CompanionDownloader(private val context: Context, private val baseUrl: Str
                 "m4a" -> "audio/mp4"; "opus", "ogg" -> "audio/ogg"; "flac" -> "audio/flac"; else -> "audio/mpeg"
             }
             val (uri, id) = DownloadManager.createPendingAudio(context, name, mime)
-            val conn = URL("$baseUrl/files/${URLEncoder.encode(name, "UTF-8").replace("+", "%20")}").openConnection() as HttpURLConnection
+            val conn = (URL("$baseUrl/files/${URLEncoder.encode(name, "UTF-8").replace("+", "%20")}").openConnection() as HttpURLConnection).authorise()
             conn.connectTimeout = 10_000; conn.readTimeout = 60_000
             try {
                 check(conn.responseCode in 200..299) { "file download failed: HTTP ${conn.responseCode}" }
@@ -65,25 +68,42 @@ class CompanionDownloader(private val context: Context, private val baseUrl: Str
         DownloadManager.Outcome.Done(ids, "${audioFiles.size} file(s) from companion", lrcByBase)
     }
 
+    companion object {
+        const val NEEDS_PAIRING = "the desktop wants this phone paired first (Desktop → Scan), or 'unpaired devices may use the downloader' switched on in its Downloads tab"
+
+        /**
+         * The pairing token of the desktop that [companionUrl] points at, when the phone is paired
+         * with it: matched on host, since a desktop lists its LAN addresses in the pairing code.
+         */
+        fun tokenFor(companionUrl: String, desktops: List<dev.cued.app.data.Desktop>): String? {
+            val host = runCatching { URL(companionUrl.trim()).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+            return desktops.firstOrNull { d ->
+                (d.addresses + listOfNotNull(d.lastGoodBase)).any { runCatching { URL(it).host.lowercase() }.getOrNull() == host }
+            }?.token
+        }
+    }
+
     /** Quick reachability probe for the settings screen. */
     suspend fun ping(): Result<String> = withContext(Dispatchers.IO) { runCatching { get("$baseUrl/health") } }
 
     private fun get(url: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
+        val conn = (URL(url).openConnection() as HttpURLConnection).authorise()
         conn.connectTimeout = 5_000; conn.readTimeout = 15_000
         try {
+            check(conn.responseCode != 401) { NEEDS_PAIRING }
             check(conn.responseCode in 200..299) { "HTTP ${conn.responseCode} from $url" }
             return conn.inputStream.bufferedReader().readText()
         } finally { conn.disconnect() }
     }
 
     private fun post(url: String, body: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
+        val conn = (URL(url).openConnection() as HttpURLConnection).authorise()
         conn.connectTimeout = 5_000; conn.readTimeout = 15_000
         conn.requestMethod = "POST"; conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json")
         try {
             conn.outputStream.use { it.write(body.toByteArray()) }
+            check(conn.responseCode != 401) { NEEDS_PAIRING }
             check(conn.responseCode in 200..299) { "HTTP ${conn.responseCode} from $url" }
             return conn.inputStream.bufferedReader().readText()
         } finally { conn.disconnect() }
