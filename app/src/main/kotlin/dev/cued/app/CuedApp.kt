@@ -77,6 +77,8 @@ class Graph(val app: Application) {
     val station: dev.cued.app.station.StationService by lazy { dev.cued.app.station.StationService(this) }
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val desktop: dev.cued.app.desktop.DesktopService by lazy { dev.cued.app.desktop.DesktopService(this) }
+    /** The shared queue (party): host side handler, LAN + Bluetooth doors, guest log. */
+    val party: dev.cued.app.party.PartyService by lazy { dev.cued.app.party.PartyService(this) }
 
     init {
         // New or previously unlabelled files get their tag genres read after each scan.

@@ -75,6 +75,8 @@ class CuedVmFactory(private val graph: Graph) : ViewModelProvider.Factory {
         modelClass.isAssignableFrom(StationViewModel::class.java) -> StationViewModel(graph) as T
         modelClass.isAssignableFrom(DesktopViewModel::class.java) -> DesktopViewModel(graph) as T
         modelClass.isAssignableFrom(FeedViewModel::class.java) -> FeedViewModel(graph) as T
+        modelClass.isAssignableFrom(LedgerViewModel::class.java) -> LedgerViewModel(graph) as T
+        modelClass.isAssignableFrom(PartyViewModel::class.java) -> PartyViewModel(graph) as T
         else -> error("Unknown ViewModel $modelClass")
     }
 }
@@ -169,6 +171,8 @@ class PlayerViewModel(private val graph: Graph) : ViewModel() {
     val currentTempo: StateFlow<TrackTempo?> = graph.player.player.currentTempo
     val spectrumBus: SpectrumBus get() = graph.player.spectrumBus
     val uiSettings: StateFlow<UiSettings> = graph.settings.ui.stateIn(viewModelScope, SharingStarted.Eagerly, UiSettings(ScrubberMode.REACTIVE_SPECTROGRAM, 120, 48))
+    val playback: StateFlow<PlaybackSettings> = graph.settings.playback.stateIn(viewModelScope, SharingStarted.Eagerly, PlaybackSettings.DEFAULT)
+    fun setKaraoke(on: Boolean) = viewModelScope.launch { graph.settings.setKaraoke(on) }
     val currentTrack: StateFlow<TrackEntity?> = _state.map { it.trackId }.flatMapLatest { id -> if (id == null) MutableStateFlow(null) else graph.library.observeTrack(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -492,6 +496,9 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun setCrossfadeMs(ms: Long) = viewModelScope.launch { graph.settings.setCrossfadeMs(ms) }
     fun setTempoMatchMs(ms: Long) = viewModelScope.launch { graph.settings.setTempoMatchMs(ms) }
     fun setSkipSilence(on: Boolean) = viewModelScope.launch { graph.settings.setSkipSilence(on) }
+    fun setKaraoke(on: Boolean) = viewModelScope.launch { graph.settings.setKaraoke(on) }
+    fun setKaraokeStrength(v: Float) = viewModelScope.launch { graph.settings.setKaraokeStrength(v) }
+    fun setPartyControls(on: Boolean) = viewModelScope.launch { graph.settings.setPartyControls(on) }
     fun setSilenceThresholdDb(db: Float) = viewModelScope.launch { graph.settings.setSilenceThresholdDb(db) }
     fun setSilenceToleranceMs(ms: Int) = viewModelScope.launch { graph.settings.setSilenceToleranceMs(ms) }
     val lyrics: StateFlow<LyricsSettings> = graph.settings.lyrics.stateIn(viewModelScope, SharingStarted.Eagerly, LyricsSettings(true, true))

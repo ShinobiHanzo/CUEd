@@ -92,6 +92,11 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         LabeledSlider("Tolerate up to", "${pb.silenceToleranceMs} ms", pb.silenceToleranceMs.toFloat(), 100f..3000f, 28, enabled = pb.skipSilence) { vm.setSilenceToleranceMs(it.toInt()) }
         Text("Quiet stretches shorter than the tolerance are kept so phrases still breathe. Raise the threshold (towards -20) to be more aggressive; lower it (towards -80) if fade-outs get chopped.", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
 
+        SectionHeader("Karaoke", "Cut the lead vocal, keep the band")
+        ToggleRow("Karaoke", "Cancels the centre of the mix, where the lead vocal sits in nearly every song, and puts its bass back. Also on the Now Playing screen. Works on stereo mixes; wide backing vocals stay, mono files go quiet.", pb.karaoke) { vm.setKaraoke(it) }
+        LabeledSlider("Strength", "${(pb.karaokeStrength * 100).toInt()}%", pb.karaokeStrength, 0f..1f, 9, enabled = pb.karaoke) { vm.setKaraokeStrength(it) }
+        Text("Half strength leaves a quiet guide vocal to sing along to.", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+
         SectionHeader("Scrubber", "Song-position control style")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             ScrubberMode.entries.forEachIndexed { i, m ->

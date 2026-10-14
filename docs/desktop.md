@@ -24,6 +24,8 @@ The wire protocol lives in that repository's `docs/protocol.md`; this page is th
 | Theme colours sub-page | Settings → Developer mode → Theme colours | `ui/theme/Theme.kt`, `ui/screens/SettingsScreen.kt` |
 | Floating 150×150 mini player with the spectrograph and synced lyrics | desktop only; the phone keeps its banner mini player above the tab bar | `ui/components/MiniPlayer.kt` (unchanged) |
 | Desktop pulls a track from the Share screen; pushes one with its ⇪ button; plain NIP-01 relay | unchanged from before | share server, Receive screen, Stations relays |
+| Party host (desktop 0.3.0+): friends queue songs on the desktop over the LAN | Party → Find a party lists the desktop next to phone hosts; same signed envelopes | `party/PartyClient.kt` |
+| Ledger export in the same `cued-ledger/1` shape | Your ledger → Export | `ui/LedgerViewModel.kt` |
 | spotdl companion (desktop 0.2.4+ serves it to paired phones only) | Downloads → Companion (LAN) sends the token of the paired desktop whose address matches | `download/CompanionDownloader.tokenFor` |
 
 The core half (`core/desktop/*`: `PairLink`, `FriendLink`, `Seal`, `AccountChain`, `Assertion`,

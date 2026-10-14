@@ -217,6 +217,9 @@ interface PlayEventDao {
 
     @Query("SELECT MAX(at) FROM play_events")
     suspend fun lastEventAt(): Long?
+
+    @Query("DELETE FROM play_events")
+    suspend fun deleteAll()
 }
 
 @Dao

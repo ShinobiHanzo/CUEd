@@ -74,6 +74,8 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Celebration
 import dev.cued.app.ui.components.TrackSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
@@ -82,6 +84,8 @@ import dev.cued.app.ui.screens.ReleaseScreen
 import dev.cued.app.ui.screens.DesktopsScreen
 import dev.cued.app.ui.screens.DesktopLibraryScreen
 import dev.cued.app.ui.screens.FriendsScreen
+import dev.cued.app.ui.screens.LedgerScreen
+import dev.cued.app.ui.screens.PartyScreen
 import dev.cued.app.ui.screens.HomeScreen
 import dev.cued.app.ui.screens.LibraryScreen
 import dev.cued.app.ui.screens.AlbumScreen
@@ -147,6 +151,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val setvm: SettingsViewModel = viewModel(factory = factory)
     val dkvm: DesktopViewModel = viewModel(factory = factory)
     val fvm: FeedViewModel = viewModel(factory = factory)
+    val ledvm: LedgerViewModel = viewModel(factory = factory)
+    val ptvm: PartyViewModel = viewModel(factory = factory)
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -308,6 +314,11 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 NavigationDrawerItem(label = { Text("Desktop") }, selected = route == "desktops", icon = { Icon(Icons.Default.Computer, null) },
                     badge = { if (desktops.isNotEmpty()) Text(if (desktops.size == 1) desktops.first().label else "${desktops.size} linked") },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("desktops") { launchSingleTop = true } })
+                NavigationDrawerItem(label = { Text("Your ledger") }, selected = route == "ledger", icon = { Icon(Icons.Default.Insights, null) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("ledger") { launchSingleTop = true } })
+                NavigationDrawerItem(label = { Text("Party") }, selected = route == "party", icon = { Icon(Icons.Default.Celebration, null) },
+                    badge = { val h by ptvm.host.collectAsState(); if (h.hosting) Text("hosting", color = Teal) },
+                    onClick = { scope.launch { drawer.close() }; nav.navigate("party") { launchSingleTop = true } })
                 NavigationDrawerItem(label = { Text("Friends") }, selected = route == "friends", icon = { Icon(Icons.Default.People, null) },
                     badge = { val n = friends.count { it.status == "pending_in" }; if (n > 0) Text("$n request${if (n == 1) "" else "s"}", color = Teal) },
                     onClick = { scope.launch { drawer.close() }; nav.navigate("friends") { launchSingleTop = true } })
@@ -500,6 +511,11 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 composable("desktop/{id}") { e ->
                     DesktopLibraryScreen(dkvm, e.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() },
                         onPlay = { t -> pvm.play(listOf(t)); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } })
+                }
+                composable("ledger") { LedgerScreen(ledvm, onBack = { nav.popBackStack() }, onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } }) }
+                composable("party") {
+                    PartyScreen(ptvm, onBack = { nav.popBackStack() }, onOpenFriends = { nav.navigate("friends") { launchSingleTop = true } },
+                        onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } })
                 }
                 composable("friends") {
                     FriendsScreen(dkvm, onBack = { nav.popBackStack() }, onScan = { nav.navigate("receive") },

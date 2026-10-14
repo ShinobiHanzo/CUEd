@@ -7,17 +7,18 @@ import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 
 /**
- * One deck's audio pipeline: silence skipping → spectrum tap → time-stretch.
+ * One deck's audio pipeline: silence skipping → vocal cut (karaoke) → spectrum tap → time-stretch.
  * Replaces ExoPlayer's default chain so the sink learns how many frames the
  * silence skipper removed and keeps the playback position accurate.
  */
 @UnstableApi
 class CuedAudioProcessorChain(
     val silenceSkip: SilenceSkipProcessor,
+    val vocalCut: VocalCutProcessor,
     private val tap: SpectrumTapProcessor,
 ) : AudioProcessorChain {
     private val sonic = SonicAudioProcessor()
-    private val processors = arrayOf<AudioProcessor>(silenceSkip, tap, sonic)
+    private val processors = arrayOf<AudioProcessor>(silenceSkip, vocalCut, tap, sonic)
 
     override fun getAudioProcessors(): Array<AudioProcessor> = processors
 

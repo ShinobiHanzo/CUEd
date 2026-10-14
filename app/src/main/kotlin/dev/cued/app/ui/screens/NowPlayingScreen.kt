@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -251,6 +252,10 @@ fun NowPlayingScreen(pvm: PlayerViewModel, lvm: LibraryViewModel, onClose: () ->
             }
             if (!isLong) IconButton(onClick = { pvm.blendNow() }, enabled = transition == null && state.queueIndex + 1 < state.queue.size) {
                 Icon(Icons.Default.Bolt, contentDescription = "Blend into next now", tint = if (transition == null) Teal else Muted)
+            }
+            val pb by pvm.playback.collectAsState()
+            IconButton(onClick = { pvm.setKaraoke(!pb.karaoke) }) {
+                Icon(Icons.Default.MicOff, contentDescription = if (pb.karaoke) "Karaoke on: lead vocal cut" else "Karaoke", tint = if (pb.karaoke) Teal else Muted)
             }
         }
     }

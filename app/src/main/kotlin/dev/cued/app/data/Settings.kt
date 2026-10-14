@@ -43,6 +43,12 @@ data class PlaybackSettings(
     val silenceThresholdDb: Float,
     /** Silence shorter than this is kept; only the excess is skipped. */
     val silenceToleranceMs: Int,
+    /** Karaoke: cancel the centre of the mix (the lead vocal) while keeping its bass. */
+    val karaoke: Boolean = false,
+    /** 0..1, how much of the centre to remove; 0.5 leaves a quiet guide vocal. */
+    val karaokeStrength: Float = 1f,
+    /** Guests of a party may skip, pause and resume, not only queue. */
+    val partyControls: Boolean = true,
 ) {
     companion object {
         val DEFAULT = PlaybackSettings(
@@ -131,6 +137,9 @@ class Settings(private val context: Context) {
         val skipSilence = booleanPreferencesKey("skip_silence")
         val silenceThresholdDb = floatPreferencesKey("silence_threshold_db")
         val silenceToleranceMs = intPreferencesKey("silence_tolerance_ms")
+        val karaoke = booleanPreferencesKey("karaoke")
+        val karaokeStrength = floatPreferencesKey("karaoke_strength")
+        val partyControls = booleanPreferencesKey("party_controls")
         val lyricsOnline = booleanPreferencesKey("lyrics_online")
         val lyricsAuto = booleanPreferencesKey("lyrics_auto")
         val genresOnline = booleanPreferencesKey("genres_online")
@@ -181,6 +190,9 @@ class Settings(private val context: Context) {
             skipSilence = p[K.skipSilence] ?: PlaybackSettings.DEFAULT.skipSilence,
             silenceThresholdDb = p[K.silenceThresholdDb] ?: PlaybackSettings.DEFAULT.silenceThresholdDb,
             silenceToleranceMs = p[K.silenceToleranceMs] ?: PlaybackSettings.DEFAULT.silenceToleranceMs,
+            karaoke = p[K.karaoke] ?: false,
+            karaokeStrength = p[K.karaokeStrength] ?: 1f,
+            partyControls = p[K.partyControls] ?: true,
         )
     }
 
@@ -283,6 +295,9 @@ class Settings(private val context: Context) {
     suspend fun setSkipSilence(on: Boolean) = context.dataStore.edit { it[K.skipSilence] = on }
     suspend fun setSilenceThresholdDb(db: Float) = context.dataStore.edit { it[K.silenceThresholdDb] = db.coerceIn(-80f, -20f) }
     suspend fun setSilenceToleranceMs(ms: Int) = context.dataStore.edit { it[K.silenceToleranceMs] = ms.coerceIn(100, 5_000) }
+    suspend fun setKaraoke(on: Boolean) = context.dataStore.edit { it[K.karaoke] = on }
+    suspend fun setKaraokeStrength(v: Float) = context.dataStore.edit { it[K.karaokeStrength] = v.coerceIn(0f, 1f) }
+    suspend fun setPartyControls(on: Boolean) = context.dataStore.edit { it[K.partyControls] = on }
     suspend fun setCarMode(on: Boolean) = context.dataStore.edit { it[K.carMode] = on }
     suspend fun setAutoCarMode(on: Boolean) = context.dataStore.edit { it[K.autoCarMode] = on }
     suspend fun setCarSpeedTrigger(on: Boolean) = context.dataStore.edit { it[K.carSpeedTrigger] = on }
