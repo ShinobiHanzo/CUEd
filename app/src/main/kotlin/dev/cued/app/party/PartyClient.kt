@@ -114,7 +114,7 @@ class BleTransport(private val context: Context, private val device: BluetoothDe
     private suspend fun ensureConnected() = withContext(Dispatchers.IO) {
         if (gatt != null && rx != null) return@withContext
         events.clear()
-        gatt = if (Build.VERSION.SDK_INT >= 23) device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE) else device.connectGatt(context, false, callback)
+        gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
         val deadline = System.currentTimeMillis() + 12_000
         while (System.currentTimeMillis() < deadline) {
             when (val ev = events.poll(500, TimeUnit.MILLISECONDS)) {
@@ -216,10 +216,14 @@ class PartyClient(private val context: Context) {
         return found.values.toList()
     }
 
-    fun transportFor(host: Host): PartyTransport = when {
-        host.device != null -> BleTransport(context, host.device)
-        host.beacon.url != null -> LanTransport(host.beacon.url)
-        else -> throw IOException("this host has no address")
+    fun transportFor(host: Host): PartyTransport {
+        val device = host.device
+        val url = host.beacon.url
+        return when {
+            device != null -> BleTransport(context, device)
+            url != null -> LanTransport(url)
+            else -> throw IOException("this host has no address")
+        }
     }
 
     /**

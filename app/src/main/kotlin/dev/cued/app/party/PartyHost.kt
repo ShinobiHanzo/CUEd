@@ -18,6 +18,7 @@ import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.media3.common.util.UnstableApi
 import dev.cued.app.share.ShareServer
 import dev.cued.core.party.Chunker
 import dev.cued.core.party.Party
@@ -46,6 +47,7 @@ import java.util.concurrent.LinkedBlockingQueue
  *    you with no shared Wi-Fi: requests arrive as frames on RX, replies go out
  *    as notifications on TX.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 class PartyHost(private val context: Context, private val service: PartyService) {
     data class State(val hosting: Boolean = false, val lanUrl: String? = null, val ble: String = "off", val error: String? = null)
 

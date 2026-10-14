@@ -2,6 +2,7 @@ package dev.cued.app.party
 
 import android.util.Log
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import dev.cued.app.Graph
 import dev.cued.app.playback.MediaItems
 import dev.cued.app.playback.PlayerConnection
@@ -27,6 +28,7 @@ import kotlinx.serialization.json.JsonElement
  * is on, skip / pause / resume. Replies are signed with this phone's station
  * key, so a guest can check it is really talking to its friend.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 class PartyService(private val graph: Graph) {
     data class Event(val who: String, val what: String, val at: Long)
 
@@ -69,7 +71,7 @@ class PartyService(private val graph: Graph) {
                 Party.OP_NOW -> reply(true, Party.toJson(now()))
                 Party.OP_SEARCH -> {
                     val q = Party.queryOf(req.arg).trim()
-                    if (q.isEmpty()) return reply(true, Party.toJson(emptyList()))
+                    if (q.isEmpty()) return reply(true, Party.toJson(emptyList<PartyTrack>()))
                     val tracks = graph.library.search(q).first().take(Party.MAX_RESULTS)
                     reply(true, Party.toJson(tracks.map { PartyTrack(id = it.id, title = it.title, artist = it.artist, album = it.album, durationMs = it.durationMs) }))
                 }
