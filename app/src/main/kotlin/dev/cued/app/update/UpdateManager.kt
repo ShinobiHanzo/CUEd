@@ -8,10 +8,12 @@ import android.provider.Settings as SysSettings
 import androidx.core.content.FileProvider
 import dev.cued.app.BuildConfig
 import dev.cued.app.data.Settings
+import dev.cued.core.changelog.Changelog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -165,6 +167,32 @@ class UpdateManager(private val context: Context, private val settings: Settings
     }
 
     fun dismiss() { _state.value = State.Idle }
+
+    // ---- patch notes -----------------------------------------------------------------------------
+
+    /** The changelog shipped in the APK (copied from the repository root at build time). */
+    fun changelog(): String = runCatching { context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() } }.getOrDefault("")
+
+    data class WhatsNew(val from: String?, val to: String, val markdown: String)
+
+    /**
+     * Notes the person has not seen: everything newer than the version they last ran, up to this
+     * one. Null on a fresh install (the first version is remembered, nothing is shown) and when
+     * nothing changed.
+     */
+    suspend fun whatsNew(): WhatsNew? {
+        val last = settings.lastSeenVersion.first()
+        if (last == null) { settings.setLastSeenVersion(currentVersion); return null }
+        if (Changelog.compare(last, currentVersion) >= 0) return null
+        val sections = Changelog.between(changelog(), last, currentVersion)
+        if (sections.isEmpty()) { settings.setLastSeenVersion(currentVersion); return null }
+        return WhatsNew(last, currentVersion, Changelog.render(sections))
+    }
+
+    /** The running version's own notes, for Settings → What's new. */
+    fun notesForCurrent(): String = Changelog.render(Changelog.between(changelog(), null, currentVersion).take(3))
+
+    suspend fun markSeen() = settings.setLastSeenVersion(currentVersion)
 
     private fun open(url: String, token: String?): HttpURLConnection {
         val conn = URL(url).openConnection() as HttpURLConnection

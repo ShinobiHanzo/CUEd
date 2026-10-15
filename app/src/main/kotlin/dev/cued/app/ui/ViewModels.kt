@@ -538,6 +538,7 @@ class SettingsViewModel(private val graph: Graph) : ViewModel() {
     fun canInstall() = graph.updates.canInstall()
     fun unknownSourcesIntent() = graph.updates.unknownSourcesIntent()
     fun installIntent(file: java.io.File) = graph.updates.installIntent(file)
+    fun notesForCurrent(): String = graph.updates.notesForCurrent()
     fun setUpdatesAuto(on: Boolean) = viewModelScope.launch { graph.settings.setUpdatesAuto(on) }
     fun setGithubToken(t: String?) = viewModelScope.launch { graph.settings.setGithubToken(t) }
 

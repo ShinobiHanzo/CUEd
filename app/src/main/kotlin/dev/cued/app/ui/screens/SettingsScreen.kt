@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import dev.cued.app.data.ScrubberMode
 import dev.cued.app.ui.SettingsViewModel
 import dev.cued.app.ui.components.SectionHeader
+import dev.cued.app.ui.components.WhatsNewSheet
 import dev.cued.app.ui.theme.Muted
 import dev.cued.core.mix.CrossfadeCurve
 
@@ -342,8 +343,13 @@ private fun UpdateBlock(vm: SettingsViewModel) {
     val us by vm.updateSettings.collectAsState()
     val context = LocalContext.current
     var token by remember(us.githubToken) { mutableStateOf(us.githubToken.orEmpty()) }
+    var showNotes by remember { mutableStateOf(false) }
+    if (showNotes) WhatsNewSheet(title = "What's new in ${vm.currentVersion}", markdown = vm.notesForCurrent(), onDismiss = { showNotes = false })
     Column(Modifier.padding(horizontal = 16.dp)) {
-        Text("Installed: v${vm.currentVersion}", style = MaterialTheme.typography.labelLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Installed: v${vm.currentVersion}", style = MaterialTheme.typography.labelLarge)
+            TextButton(onClick = { showNotes = true }) { Text("What's new") }
+        }
         when (val s = st) {
             UpdateManager.State.Idle -> TextButton(onClick = { vm.checkForUpdate() }) { Text("Check for updates") }
             UpdateManager.State.Checking -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("  Checking GitHub…", color = Muted) }

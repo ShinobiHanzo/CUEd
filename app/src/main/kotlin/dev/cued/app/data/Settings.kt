@@ -150,6 +150,7 @@ class Settings(private val context: Context) {
         val updatesAuto = booleanPreferencesKey("updates_auto")
         val updatesLastCheck = longPreferencesKey("updates_last_check")
         val githubToken = stringPreferencesKey("github_token")
+        val lastSeenVersion = stringPreferencesKey("last_seen_version")
         val debugLog = booleanPreferencesKey("debug_log")
         val lockScreen = booleanPreferencesKey("lock_screen_player")
         val carMode = booleanPreferencesKey("car_mode")
@@ -221,6 +222,9 @@ class Settings(private val context: Context) {
     suspend fun updatesNow() = updates.first()
     suspend fun setUpdatesAuto(on: Boolean) = context.dataStore.edit { it[K.updatesAuto] = on }
     suspend fun setUpdatesLastCheck(at: Long) = context.dataStore.edit { it[K.updatesLastCheck] = at }
+    /** The version whose patch notes were shown (or that the app first ran as); null on a fresh install. */
+    val lastSeenVersion: Flow<String?> = context.dataStore.data.map { it[K.lastSeenVersion] }
+    suspend fun setLastSeenVersion(v: String) = context.dataStore.edit { it[K.lastSeenVersion] = v }
     suspend fun setGithubToken(token: String?) = context.dataStore.edit { if (token.isNullOrBlank()) it.remove(K.githubToken) else it[K.githubToken] = token.trim() }
 
     val debugLog: Flow<Boolean> = context.dataStore.data.map { it[K.debugLog] ?: false }

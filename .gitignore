@@ -25,3 +25,6 @@ Thumbs.db
 tools/spotdl-server/__pycache__/
 tools/spotdl-server/downloads/
 tools/spotdl-server/.venv/
+
+# Copied from the repository root at build time (see app/build.gradle.kts)
+app/src/main/assets/CHANGELOG.md

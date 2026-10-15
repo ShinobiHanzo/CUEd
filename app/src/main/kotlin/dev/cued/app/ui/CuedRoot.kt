@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Celebration
 import dev.cued.app.ui.components.TrackSheet
+import dev.cued.app.ui.components.WhatsNewSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
 import dev.cued.app.ui.screens.ArtistFeedScreen
@@ -238,6 +239,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
 
     val play: (List<TrackEntity>, Int) -> Unit = { list, idx -> pvm.play(list, idx) }
     val more: (TrackEntity) -> Unit = { sheetTrack = it }
+    // Patch notes once, on the first launch after an update (the notes ship inside the APK).
+    var whatsNew by remember { mutableStateOf<dev.cued.app.update.UpdateManager.WhatsNew?>(null) }
+    LaunchedEffect(Unit) { whatsNew = graph.updates.whatsNew() }
+    whatsNew?.let { wn ->
+        WhatsNewSheet(title = "What's new in ${wn.to}", markdown = wn.markdown, onDismiss = { whatsNew = null; scope.launch { graph.updates.markSeen() } })
+    }
     // The mini player and the bottom bar stay on every screen except the full player itself,
     // so the current track is always one tap away while browsing an artist or searching.
     val showChrome = route != Route.NOW_PLAYING

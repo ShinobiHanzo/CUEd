@@ -72,6 +72,13 @@ android {
     }
 }
 
+// The patch notes shown after an update ship inside the APK: one source of truth at the repository root.
+val syncChangelog by tasks.registering(Copy::class) {
+    from(rootDir.resolve("CHANGELOG.md"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+tasks.named("preBuild") { dependsOn(syncChangelog) }
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.incremental", "true")

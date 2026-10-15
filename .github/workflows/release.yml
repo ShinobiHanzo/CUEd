@@ -86,6 +86,12 @@ jobs:
             echo
             echo "**Install:** download the APK below, open it on the phone, allow installs from your browser/file manager. minSdk 26 (Android 8.0). Already have CUEd? Settings → Updates installs this in-app."
             echo
+            ver="${{ steps.ver.outputs.name }}"
+            if grep -q "^## $ver" CHANGELOG.md; then
+              echo "### What's new"
+              awk -v v="$ver" '$0 ~ "^## "v"$" {on=1; next} /^## / {if (on) exit} on' CHANGELOG.md
+              echo
+            fi
             if [ "${{ steps.key.outputs.signed }}" = "dev" ]; then
               echo "> ⚠️ **Pre-release, signed with the public dev key** in \`keystore/cued-dev.jks\`. That key only makes builds upgrade over each other; it does not prove who built this file. Only install APKs from this Releases page. See \`keystore/README.md\` to switch to a private key."
             else
