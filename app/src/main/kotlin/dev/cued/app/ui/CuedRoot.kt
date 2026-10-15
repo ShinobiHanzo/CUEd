@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Celebration
 import dev.cued.app.ui.components.TrackSheet
+import dev.cued.app.ui.components.UpdateWindow
 import dev.cued.app.ui.components.WhatsNewSheet
 import dev.cued.app.ui.screens.CarModeScreen
 import dev.cued.app.ui.screens.DownloadsScreen
@@ -240,6 +241,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
     val play: (List<TrackEntity>, Int) -> Unit = { list, idx -> pvm.play(list, idx) }
     val more: (TrackEntity) -> Unit = { sheetTrack = it }
     // Patch notes once, on the first launch after an update (the notes ship inside the APK).
+    // The update window: notes + the download button. "banner" closes it when the download starts, "settings" keeps it open.
+    var updateWindow by remember { mutableStateOf<String?>(null) }
+    updateWindow?.let { mode -> UpdateWindow(setvm, closeOnDownload = mode == "banner", onDismiss = { updateWindow = null }) }
     var whatsNew by remember { mutableStateOf<dev.cued.app.update.UpdateManager.WhatsNew?>(null) }
     LaunchedEffect(Unit) { whatsNew = graph.updates.whatsNew() }
     whatsNew?.let { wn ->
@@ -392,8 +396,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                         lvm, fvm, onPlay = play, onOpenList = { nav.navigate("list/${it.name}") }, onTrackMore = more,
                         onOpenRelease = { nav.navigate("feed/release/${URLEncoder.encode(it, "UTF-8")}") },
                         onOpenArtistFeed = { nav.navigate("feed/artist/${URLEncoder.encode(it, "UTF-8")}") },
-                        updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version,
-                        onUpdate = { nav.navigate(Route.SETTINGS) { launchSingleTop = true } },
+                        updateAvailable = (upd as? dev.cued.app.update.UpdateManager.State.Available)?.release?.version ?: (upd as? dev.cued.app.update.UpdateManager.State.Ready)?.release?.version,
+                        onUpdate = { updateWindow = "banner" },
                         crashed = crash != null,
                         onReportCrash = {
                             val c = crash ?: return@HomeScreen
@@ -453,7 +457,8 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 }
                 composable(Route.SETTINGS) {
                     SettingsScreen(setvm, stvm, onOpenReceive = { nav.navigate("receive") }, onStationSetup = { nav.navigate("station/setup") { launchSingleTop = true } },
-                        onOpenDesktop = { nav.navigate("desktops") { launchSingleTop = true } }, onOpenFriends = { nav.navigate("friends") { launchSingleTop = true } })
+                        onOpenDesktop = { nav.navigate("desktops") { launchSingleTop = true } }, onOpenFriends = { nav.navigate("friends") { launchSingleTop = true } },
+                        onWhatsNew = { updateWindow = "settings" })
                 }
 
                 composable(Route.NOW_PLAYING) { NowPlayingScreen(pvm, lvm, onClose = { nav.popBackStack() }, onMore = { id -> scope.launch { graph.library.track(id)?.let { sheetTrack = it } } }) }

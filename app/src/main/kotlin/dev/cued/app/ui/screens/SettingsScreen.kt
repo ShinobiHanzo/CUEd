@@ -46,13 +46,12 @@ import androidx.compose.ui.unit.dp
 import dev.cued.app.data.ScrubberMode
 import dev.cued.app.ui.SettingsViewModel
 import dev.cued.app.ui.components.SectionHeader
-import dev.cued.app.ui.components.WhatsNewSheet
 import dev.cued.app.ui.theme.Muted
 import dev.cued.core.mix.CrossfadeCurve
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel, onOpenReceive: () -> Unit, onStationSetup: () -> Unit, onOpenDesktop: () -> Unit = {}, onOpenFriends: () -> Unit = {}) {
+fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel, onOpenReceive: () -> Unit, onStationSetup: () -> Unit, onOpenDesktop: () -> Unit = {}, onOpenFriends: () -> Unit = {}, onWhatsNew: () -> Unit = {}) {
     val context = LocalContext.current
     val pb by vm.playback.collectAsState()
     val ui by vm.ui.collectAsState()
@@ -201,7 +200,7 @@ fun SettingsScreen(vm: SettingsViewModel, stvm: dev.cued.app.ui.StationViewModel
         LockScreenBlock(vm)
 
         SectionHeader("Updates", "Straight from GitHub Releases: check, download, verify the SHA-256, install")
-        UpdateBlock(vm)
+        UpdateBlock(vm, onWhatsNew)
 
         SectionHeader("Developer mode", "Off by default. On: the Downloads screen also offers spotdl through Termux or a companion computer, with their test and repair tools; Spotify API keys and the Spotify release feed become available; and the theme colours below can be changed.")
         DevModeBlock(vm)
@@ -338,17 +337,15 @@ private fun DebugBlock(vm: SettingsViewModel) {
 }
 
 @Composable
-private fun UpdateBlock(vm: SettingsViewModel) {
+private fun UpdateBlock(vm: SettingsViewModel, onWhatsNew: () -> Unit) {
     val st by vm.update.collectAsState()
     val us by vm.updateSettings.collectAsState()
     val context = LocalContext.current
     var token by remember(us.githubToken) { mutableStateOf(us.githubToken.orEmpty()) }
-    var showNotes by remember { mutableStateOf(false) }
-    if (showNotes) WhatsNewSheet(title = "What's new in ${vm.currentVersion}", markdown = vm.notesForCurrent(), onDismiss = { showNotes = false })
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Installed: v${vm.currentVersion}", style = MaterialTheme.typography.labelLarge)
-            TextButton(onClick = { showNotes = true }) { Text("What's new") }
+            TextButton(onClick = onWhatsNew) { Text("What's new") }
         }
         when (val s = st) {
             UpdateManager.State.Idle -> TextButton(onClick = { vm.checkForUpdate() }) { Text("Check for updates") }
@@ -357,7 +354,7 @@ private fun UpdateBlock(vm: SettingsViewModel) {
             is UpdateManager.State.Available -> {
                 Text("v${s.release.version} is available (${s.release.apkSize / 1024 / 1024} MB)", color = Teal, style = MaterialTheme.typography.titleSmall)
                 if (s.release.notes.isNotBlank()) Text(s.release.notes.lines().take(12).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(vertical = 4.dp))
-                Row { Button(onClick = { vm.downloadUpdate() }) { Text("Download") }; TextButton(onClick = { vm.dismissUpdate() }) { Text("Later") } }
+                Row { Button(onClick = onWhatsNew) { Text("What's new & download") }; TextButton(onClick = { vm.dismissUpdate() }) { Text("Later") } }
             }
             is UpdateManager.State.Downloading -> {
                 Text("Downloading v${s.release.version}…", color = Muted)

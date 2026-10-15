@@ -82,7 +82,7 @@ fun HomeScreen(
             ) {
                 Icon(androidx.compose.material.icons.Icons.Default.SystemUpdate, contentDescription = null, tint = dev.cued.app.ui.theme.Teal)
                 Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) { Text("CUEd v$updateAvailable is available", style = MaterialTheme.typography.bodyMedium); Text("Tap to download and install", style = MaterialTheme.typography.bodySmall, color = Muted) }
+                Column(Modifier.weight(1f)) { Text("CUEd v$updateAvailable is available", style = MaterialTheme.typography.bodyMedium); Text("Tap to see what's new and download it", style = MaterialTheme.typography.bodySmall, color = Muted) }
             }
         }
         item {

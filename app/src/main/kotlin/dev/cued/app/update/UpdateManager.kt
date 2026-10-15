@@ -213,6 +213,20 @@ class UpdateManager(private val context: Context, private val settings: Settings
     }
 
     companion object {
+        /**
+         * The part of a GitHub release body worth showing: from "### What's new" (the changelog
+         * section the release workflow inserts) up to the install boilerplate; the whole body when
+         * the release predates that layout.
+         */
+        fun notesOf(r: Release): String {
+            val body = r.notes.replace("\r\n", "\n")
+            val start = body.indexOf("### What's new")
+            if (start < 0) return body.ifBlank { "## ${r.version}\n\nNo notes were published for this release." }
+            val rest = body.substring(start + "### What's new".length)
+            val end = listOf(rest.indexOf("\n> "), rest.indexOf("\nSHA-256"), rest.indexOf("\n### "), rest.indexOf("\n**Full Changelog")).filter { it >= 0 }.minOrNull() ?: rest.length
+            return "## ${r.version}\n" + rest.substring(0, end).trim()
+        }
+
         const val OWNER = "ShinobiHanzo"
         const val REPO = "CUEd"
         const val RELEASES_URL = "https://github.com/$OWNER/$REPO/releases"

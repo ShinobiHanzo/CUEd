@@ -7,7 +7,9 @@ so keep them short and written for the person holding the phone.
 
 - **What's new after an update.** The first launch on a new version shows these notes; Settings →
   Updates → *What's new* brings them back. The notes ship inside the app, so they work offline.
-- Release pages now carry the same notes.
+- **Read before you download.** When an update is available, the home-screen banner opens a window
+  with that version's notes and the Download button inside it; from Settings the same window stays
+  open while the download runs. Release pages carry the same notes.
 
 ## 0.3.0
 
