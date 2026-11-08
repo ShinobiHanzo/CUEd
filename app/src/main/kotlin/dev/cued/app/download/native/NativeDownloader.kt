@@ -82,7 +82,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
                 meta = null
                 val q = source.trim()
                 val cands = youtube.search(q)
-                val best = Matcher.best(Matcher.Wanted(q, emptyList(), null), cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull()
+                val wanted = Matcher.Wanted(q, emptyList(), null)
+                val best = Matcher.best(wanted, cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull { !Matcher.isOtherRecording(wanted, it) }
                 ytUrl = best?.id ?: error("Nothing found on YouTube Music for \"$q\"")
             }
         }
@@ -221,7 +222,8 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
 
     private fun searchBest(q: String): String {
         val cands = youtube.search(q)
-        val best = Matcher.best(Matcher.Wanted(q, emptyList(), null), cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull()
+        val wanted = Matcher.Wanted(q, emptyList(), null)
+        val best = Matcher.best(wanted, cands, minScore = 1.0f)?.candidate ?: cands.firstOrNull { !Matcher.isOtherRecording(wanted, it) }
         return best?.id ?: error("Nothing found on YouTube Music for \"$q\"")
     }
 
@@ -249,7 +251,7 @@ class NativeDownloader(private val context: Context, spotifyClientId: String?, s
             val cands = runCatching { youtube.search(q) }.onFailure { DebugLog.w(TAG, "search failed for \"$q\"", it) }.getOrDefault(emptyList())
             val ranked = Matcher.rank(wanted, cands)
             DebugLog.d(TAG, "search \"$q\": " + ranked.take(3).joinToString(" | ") { "${it.candidate.title} [${"%.1f".format(it.score)}]" })
-            ranked.firstOrNull()?.takeIf { it.score >= 2.5f }?.let { return it.candidate.id }
+            ranked.firstOrNull { !it.otherRecording }?.takeIf { it.score >= 2.5f }?.let { return it.candidate.id }
         }
         return null
     }

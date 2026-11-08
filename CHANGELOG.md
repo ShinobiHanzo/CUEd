@@ -3,6 +3,13 @@
 The sections below are shown in the app after an update (side menu → Settings → Updates → What's new),
 so keep them short and written for the person holding the phone.
 
+## 0.3.2
+
+- **No more karaoke by mistake.** The built-in downloader refuses karaoke, instrumental, cover and
+  tribute uploads (by title and by channel, such as Sing King or KaraFun) unless you asked for one;
+  it would rather find nothing than the wrong recording. "Artist - Title" uploads and the label's own
+  *Topic* audio now score as they should, so the real song wins even when the official video runs long.
+
 ## 0.3.1
 
 - **What's new after an update.** The first launch on a new version shows these notes; Settings →
