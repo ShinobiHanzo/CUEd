@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.filled.PlayArrow
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cued.app.data.db.TrackEntity
+import dev.cued.app.share.OfferedFile
 import dev.cued.app.ui.LocalGraph
 import dev.cued.app.ui.ReceiveStatus
 import dev.cued.app.ui.Received
@@ -61,10 +63,14 @@ fun ReceivedSplash(
     onOpenDownloads: () -> Unit,
     onFetchAnyway: () -> Unit,
     onDismiss: () -> Unit,
+    /** Starts the Bluetooth copy (asking for the permission first if it is missing). */
+    onBluetooth: () -> Unit = {},
     /** Starts (or restarts) the NFC copy: this phone becomes the reader and pulls the file from the other phone's Share screen. */
     onNfc: () -> Unit = {},
-    /** "Download from the source instead" for a share that only offers NFC. */
+    /** "Download from the source instead" when the other phone is out of reach. */
     onQueueLink: () -> Unit = {},
+    /** Why Bluetooth did not start by itself (off, permission), for the card's text. */
+    bluetoothBlocker: String? = null,
 ) {
     val graph = LocalGraph.current
     val p = received.payload
@@ -87,8 +93,8 @@ fun ReceivedSplash(
                         is ReceiveStatus.Queued -> "Queued"
                         is ReceiveStatus.Fetching -> "Receiving"
                         is ReceiveStatus.Failed -> "Didn't make it"
-                        is ReceiveStatus.NfcOffered -> "Offered over NFC"
-                        is ReceiveStatus.Nfc -> if (st.have >= st.total && st.total > 0) "Received" else "Receiving over NFC"
+                        is ReceiveStatus.DirectOffered -> "Offered phone to phone"
+                        is ReceiveStatus.Direct -> if (!st.running) "Received" else "Receiving over ${st.via}"
                     },
                     style = MaterialTheme.typography.labelLarge, color = if (st is ReceiveStatus.Failed) MaterialTheme.colorScheme.error else Teal,
                 )
@@ -98,7 +104,8 @@ fun ReceivedSplash(
                     is ReceiveStatus.Fetching -> CircularProgressIndicator(Modifier.size(72.dp), color = Teal, strokeWidth = 5.dp)
                     is ReceiveStatus.Queued -> Icon(Icons.Default.Download, null, Modifier.size(96.dp), tint = Teal)
                     is ReceiveStatus.Failed -> Icon(Icons.Default.ErrorOutline, null, Modifier.size(96.dp), tint = MaterialTheme.colorScheme.error)
-                    is ReceiveStatus.NfcOffered, is ReceiveStatus.Nfc -> Icon(Icons.Default.Nfc, null, Modifier.size(96.dp), tint = Teal)
+                    is ReceiveStatus.DirectOffered -> Icon(if (p.btToken != null) Icons.Default.Bluetooth else Icons.Default.Nfc, null, Modifier.size(96.dp), tint = Teal)
+                    is ReceiveStatus.Direct -> Icon(if (st.via == OfferedFile.VIA_NFC) Icons.Default.Nfc else Icons.Default.Bluetooth, null, Modifier.size(96.dp), tint = Teal)
                     else -> Icon(Icons.Default.LibraryMusic, null, Modifier.size(96.dp), tint = Teal)
                 }
                 Spacer(Modifier.height(20.dp))
@@ -106,7 +113,7 @@ fun ReceivedSplash(
                 Text(p.artist, style = MaterialTheme.typography.titleMedium, color = Muted, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (p.fileUrl != null || p.nfcFile) AssistChip(onClick = {}, label = { Text(if (p.fileUrl == null) "Audio file (NFC)" else "Audio file") })
+                    if (p.fileUrl != null || p.nfcFile || p.btToken != null) AssistChip(onClick = {}, label = { Text("Audio file") })
                     if (p.link != null) AssistChip(onClick = {}, label = { Text("Source link") })
                     p.bpm?.let { AssistChip(onClick = {}, label = { Text("${it.toInt()} BPM") }) }
                 }
@@ -116,7 +123,7 @@ fun ReceivedSplash(
                     when (st) {
                         is ReceiveStatus.Done, is ReceiveStatus.AlreadyHave -> Icon(Icons.Default.CheckCircle, null, tint = Teal)
                         is ReceiveStatus.Fetching -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Teal)
-                        is ReceiveStatus.Nfc -> if (st.have < st.total || st.total == 0L) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Teal) else Icon(Icons.Default.CheckCircle, null, tint = Teal)
+                        is ReceiveStatus.Direct -> if (st.running) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Teal) else Icon(Icons.Default.CheckCircle, null, tint = Teal)
                         else -> {}
                     }
                     Spacer(Modifier.width(8.dp))
@@ -127,18 +134,20 @@ fun ReceivedSplash(
                             is ReceiveStatus.AlreadyHave -> "This track is already in your library, so nothing was copied."
                             is ReceiveStatus.Queued -> "No file came with this share, so it is downloading from the source link. Follow it under Downloads."
                             is ReceiveStatus.Failed -> st.reason
-                            is ReceiveStatus.NfcOffered -> "The other phone has no Wi-Fi address to fetch from, but it offers the file over NFC alone. Nothing else is needed: no Wi-Fi, no hotspot, no internet."
-                            is ReceiveStatus.Nfc -> st.note
+                            is ReceiveStatus.DirectOffered ->
+                                if (p.btToken != null) "The other phone hands this file over by Bluetooth: no Wi-Fi, hotspot or internet needed." + (bluetoothBlocker?.let { " $it." } ?: " Tap the button to start.")
+                                else "The other phone has no Wi-Fi address to fetch from, but it offers the file over NFC alone. Nothing else is needed: no Wi-Fi, no hotspot, no internet."
+                            is ReceiveStatus.Direct -> st.note
                         },
                         style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
                     )
                 }
-                if (st is ReceiveStatus.Nfc) {
+                if (st is ReceiveStatus.Direct) {
                     val f = st.fraction
                     if (f != null) LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp), color = Teal)
                     else LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 14.dp), color = Teal)
                     if (st.total > 0) Text(
-                        "${st.have / 1024} of ${st.total / 1024} KB · NFC is slow: a song takes a few minutes. The phones must stay touching; a slip only pauses it.",
+                        "${st.have / 1024} of ${st.total / 1024} KB" + if (st.via == OfferedFile.VIA_NFC) " · NFC alone is slow: a song takes a few minutes. The phones must stay touching; a slip only pauses it." else "",
                         style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp),
                     )
                 }
@@ -156,22 +165,25 @@ fun ReceivedSplash(
                     }
                     is ReceiveStatus.Queued -> OutlinedButton(onClick = onOpenDownloads, modifier = Modifier.fillMaxWidth()) { Text("Open Downloads") }
                     is ReceiveStatus.Failed -> {
-                        if (p.nfcFile) Button(onClick = onNfc, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Nfc, null); Spacer(Modifier.width(6.dp)); Text("Copy over NFC instead") }
+                        if (p.btToken != null) Button(onClick = onBluetooth, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Bluetooth, null); Spacer(Modifier.width(6.dp)); Text("Copy over Bluetooth") }
+                        if (p.nfcFile) OutlinedButton(onClick = onNfc, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Nfc, null); Spacer(Modifier.width(6.dp)); Text("Copy over NFC instead (slow)") }
                         if (p.fileUrl != null || p.link != null) OutlinedButton(onClick = onFetchAnyway, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
                     }
-                    is ReceiveStatus.NfcOffered -> {
-                        Button(onClick = onNfc, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Nfc, null); Spacer(Modifier.width(6.dp)); Text("Copy over NFC") }
+                    is ReceiveStatus.DirectOffered -> {
+                        if (p.btToken != null) Button(onClick = onBluetooth, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Bluetooth, null); Spacer(Modifier.width(6.dp)); Text("Copy over Bluetooth") }
+                        if (p.nfcFile) OutlinedButton(onClick = onNfc, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Nfc, null); Spacer(Modifier.width(6.dp)); Text(if (p.btToken != null) "Copy over NFC instead (slow)" else "Copy over NFC") }
                         if (p.link != null) TextButton(onClick = onQueueLink) { Text("Download from the source link instead") }
                     }
-                    is ReceiveStatus.Nfc -> if (st.have < st.total || st.total == 0L) Text(
+                    is ReceiveStatus.Direct -> if (st.running && st.via == OfferedFile.VIA_NFC) Text(
                         "Reader mode is on: tapping the other phone again carries on.",
                         style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center,
                     )
                     is ReceiveStatus.Fetching -> {}
                 }
                 Spacer(Modifier.height(8.dp))
-                val copying = st is ReceiveStatus.Fetching || (st is ReceiveStatus.Nfc && (st.have < st.total || st.total == 0L))
-                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(if (st is ReceiveStatus.Fetching) "Hide (keeps copying)" else if (copying) "Stop and close" else "Close") }
+                val nfcRunning = st is ReceiveStatus.Direct && st.running && st.via == OfferedFile.VIA_NFC
+                val keepsCopying = st is ReceiveStatus.Fetching || (st is ReceiveStatus.Direct && st.running && !nfcRunning)
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(if (keepsCopying) "Hide (keeps copying)" else if (nfcRunning) "Stop and close" else "Close") }
             }
         }
     }

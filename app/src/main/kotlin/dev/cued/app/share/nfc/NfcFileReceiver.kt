@@ -7,18 +7,16 @@ import android.nfc.tech.IsoDep
 import android.os.Bundle
 import android.util.Log
 import dev.cued.app.Graph
+import dev.cued.app.share.OfferedFile
+import dev.cued.app.share.PartialFile
 import dev.cued.app.ui.LocalFileReceiver
 import dev.cued.app.ui.ReceiveStatus
-import dev.cued.core.crypto.toHex
 import dev.cued.core.nfc.NfcTransfer
 import dev.cued.core.share.SharePayload
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -28,9 +26,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [onStatus] as the share's status, so the same "this just arrived" card
  * shows the bar fill.
  *
- * A tap that breaks off keeps what arrived under the file's hash in the cache
- * directory; the next tap carries on from that byte. Reader mode stays on
- * until the copy lands, [stop] is called, or the activity leaves the front.
+ * This is the fallback for when Bluetooth is off or refused: NFC alone is
+ * slow, and the phones must stay touching. A tap that breaks off keeps what
+ * arrived ([PartialFile]); the next tap carries on from that byte. Reader
+ * mode stays on until the copy lands, [stop] is called, or the activity
+ * leaves the front.
  */
 class NfcFileReceiver(private val activity: Activity, private val graph: Graph, private val onStatus: (SharePayload, ReceiveStatus) -> Unit) {
     private val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(activity)
@@ -55,12 +55,13 @@ class NfcFileReceiver(private val activity: Activity, private val graph: Graph, 
         if (!a.isEnabled) return false
         hint = expect
         _note.value = null
-        expect?.let { onStatus(it, ReceiveStatus.Nfc(0, 0, "Hold the phones back to back, with the other one's Share screen open.")) }
-        if (_active.value) return true
-        _active.value = true
-        val extras = Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250) }
-        runCatching { a.enableReaderMode(activity, { tag -> onTag(tag) }, FLAGS, extras) }
-            .onFailure { Log.w(TAG, "reader mode failed", it); _active.value = false; return false }
+        if (!_active.value) {
+            val extras = Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250) }
+            val ok = runCatching { a.enableReaderMode(activity, { tag -> onTag(tag) }, FLAGS, extras) }.onFailure { Log.w(TAG, "reader mode failed", it) }.isSuccess
+            if (!ok) return false
+            _active.value = true
+        }
+        expect?.let { onStatus(it, ReceiveStatus.Direct(0, 0, "Hold the phones back to back, with the other one's Share screen open.", VIA)) }
         return true
     }
 
@@ -82,6 +83,7 @@ class NfcFileReceiver(private val activity: Activity, private val graph: Graph, 
         var payload: SharePayload? = hint
         var have = 0L
         var total = 0L
+        var part: PartialFile? = null
         try {
             iso.connect()
             iso.timeout = 5_000
@@ -89,45 +91,38 @@ class NfcFileReceiver(private val activity: Activity, private val graph: Graph, 
             if (!NfcTransfer.isOk(sel)) { _note.value = "The other phone did not answer as CUEd. Is its Share screen open?"; return }
             val header = NfcTransfer.info(iso::transceive)
             if (header == null) {
-                _note.value = "The other phone is not offering a file. On its Share screen, switch \"Include the audio file\" on."
-                payload?.let { onStatus(it, ReceiveStatus.Failed(_note.value!!)) }
+                val why = "The other phone is not offering a file. On its Share screen, switch \"Include the audio file\" on."
+                _note.value = why
+                payload?.let { onStatus(it, ReceiveStatus.Failed(why)) }
                 return
             }
-            val p = SharePayload(title = header.title, artist = header.artist, link = header.link ?: hint?.link, genres = header.genres, bpm = header.bpm, nfcFile = true)
+            // Keep the share we were asked for (its card is on screen); otherwise build one from the header.
+            val p = hint?.let { it.copy(link = it.link ?: header.link, genres = it.genres.ifEmpty { header.genres }, bpm = it.bpm ?: header.bpm) }
+                ?: SharePayload(title = header.title, artist = header.artist, link = header.link, genres = header.genres, bpm = header.bpm, nfcFile = true)
             payload = p
             total = header.size
-            val dir = File(graph.app.cacheDir, "nfc").apply { mkdirs() }
-            val part = File(dir, header.sha256 + ".part")
-            if (part.exists() && part.length() > header.size) part.delete()
-            // Hash what an earlier tap left behind, so the final check still covers every byte.
-            val md = MessageDigest.getInstance("SHA-256")
-            if (part.exists()) part.inputStream().use { s ->
-                val b = ByteArray(64 * 1024)
-                while (true) { val n = s.read(b); if (n < 0) break; md.update(b, 0, n) }
-            }
-            have = part.length()
-            onStatus(p, ReceiveStatus.Nfc(have, total, if (have > 0) "Carrying on from where the last tap stopped. Keep the phones together." else "Keep the phones together until the bar fills."))
-            if (have < total) {
+            val pf = PartialFile(graph.app, header)
+            part = pf
+            have = pf.have
+            onStatus(p, ReceiveStatus.Direct(have, total, if (have > 0) "Carrying on from where the last attempt stopped. Keep the phones together." else "Keep the phones together until the bar fills.", VIA))
+            if (!pf.complete) {
                 val cap = NfcTransfer.chunkFor(iso.maxTransceiveLength, iso.isExtendedLengthApduSupported)
-                FileOutputStream(part, true).use { out ->
-                    chunk = NfcTransfer.pull(
-                        header, have, minOf(chunk, cap), iso::transceive, { iso.isConnected },
-                        sink = { b -> out.write(b); md.update(b); have += b.size },
-                        onProgress = { got, all -> onStatus(p, ReceiveStatus.Nfc(got, all, "Keep the phones together until the bar fills.")) },
-                    )
-                }
+                chunk = NfcTransfer.pull(
+                    header, pf.have, minOf(chunk, cap), iso::transceive, { iso.isConnected },
+                    sink = { b -> pf.append(b); have = pf.have },
+                    onProgress = { got, all -> onStatus(p, ReceiveStatus.Direct(got, all, "Keep the phones together until the bar fills.", VIA)) },
+                )
             }
-            val ok = md.digest().toHex() == header.sha256
+            val ok = pf.verify()
             runCatching { iso.transceive(NfcTransfer.doneApdu(ok)) }
             if (!ok) {
-                part.delete()
                 onStatus(p, ReceiveStatus.Failed("The copy did not match the original (hash check). Tap again to start over."))
                 return
             }
-            onStatus(p, ReceiveStatus.Nfc(total, total, "Verified. Adding it to your library…"))
+            onStatus(p, ReceiveStatus.Direct(total, total, "Verified. Adding it to your library…", VIA))
             stop()
-            val id = runBlocking { LocalFileReceiver(graph).importFile(p, header.mime, part) }
-            part.delete()
+            val id = runBlocking { LocalFileReceiver(graph).importFile(p, header.mime, pf.file) }
+            pf.file.delete()
             onStatus(p, if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it"))
         } catch (e: NfcTransfer.ProtocolException) {
             Log.w(TAG, "transfer refused", e)
@@ -138,18 +133,20 @@ class NfcFileReceiver(private val activity: Activity, private val graph: Graph, 
             Log.i(TAG, "contact lost at $have/$total")
             val p = payload ?: run { _note.value = "Contact was lost before anything was read. Hold the phones still and try again."; return }
             val pct = if (total > 0) " at ${(have * 100 / total)}%" else ""
-            onStatus(p, ReceiveStatus.Nfc(have, total, "Lost contact$pct. Hold the phones together again to carry on from there."))
+            onStatus(p, ReceiveStatus.Direct(have, total, "Lost contact$pct. Hold the phones together again to carry on from there.", VIA))
         } catch (e: Exception) {
             Log.w(TAG, "transfer failed", e)
             val p = payload ?: run { _note.value = e.message ?: "Transfer failed"; return }
             onStatus(p, ReceiveStatus.Failed(e.message ?: "Transfer failed"))
         } finally {
+            part?.close()
             runCatching { iso.close() }
         }
     }
 
     companion object {
         private const val TAG = "NfcFileReceiver"
+        private const val VIA = OfferedFile.VIA_NFC
         private const val FLAGS = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
     }
 }

@@ -56,7 +56,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.cued.app.share.QrCodes
 import dev.cued.app.share.nfc.NfcFileReceiver
 import dev.cued.app.share.nfc.NfcReader
-import dev.cued.app.share.nfc.NfcTransferHolder
+import dev.cued.app.share.OfferedFile
 import androidx.compose.material3.LinearProgressIndicator
 import dev.cued.app.share.nfc.TagEmulationSession
 import androidx.lifecycle.Lifecycle
@@ -82,11 +82,16 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
 
     LaunchedEffect(trackId) { vm.startSharing(trackId) }
     DisposableEffect(Unit) { onDispose { vm.stopSharing(); nfc?.stopReading() } }
+    // Bluetooth carries the file when there is no shared Wi-Fi; it needs the Nearby devices permission, asked once here.
+    val bt by vm.bluetooth.collectAsState()
+    val btPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.refreshBluetooth() }
+    var askedBt by remember { mutableStateOf(false) }
+    LaunchedEffect(bt.needsPermission) { if (bt.needsPermission && !askedBt) { askedBt = true; btPermission.launch(vm.blePermissions()) } }
     // Hold the NFC slot only while this screen is actually in front.
     DisposableEffect(lifecycle, tag) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> { tag?.start(); nfcProblem = tag?.problem }
+                Lifecycle.Event.ON_RESUME -> { tag?.start(); nfcProblem = tag?.problem; vm.refreshBluetooth() } // Bluetooth may have been switched on meanwhile
                 Lifecycle.Event.ON_PAUSE -> tag?.stop()
                 else -> {}
             }
@@ -111,19 +116,28 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Include the audio file")
-                    Text("Over Wi-Fi/hotspot when both phones share one, otherwise over NFC alone: hold the phones together until the bar fills.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("Over Wi-Fi/hotspot when both phones share one. Otherwise the tap or the QR code introduces the phones and the file crosses over Bluetooth, or over NFC alone as the last resort.", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
                 Switch(checked = state.includeFile, onCheckedChange = vm::setIncludeFile)
             }
-            val nfcSend by NfcTransferHolder.progress.collectAsState()
-            nfcSend?.let { pr ->
-                if (pr.sent > 0 || pr.verdict != null) {
+            if (state.includeFile) {
+                Text(
+                    if (bt.token != null) "Bluetooth ready: no Wi-Fi needed. The other phone copies the file by itself after the tap or the scan." else bt.note,
+                    style = MaterialTheme.typography.bodySmall, color = if (bt.token != null) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+                if (bt.needsPermission) OutlinedButton(onClick = { btPermission.launch(vm.blePermissions()) }, modifier = Modifier.padding(top = 4.dp)) { Text("Allow Bluetooth transfer") }
+                else if (bt.token == null && bt.note.isNotBlank()) OutlinedButton(onClick = vm::refreshBluetooth, modifier = Modifier.padding(top = 4.dp)) { Text("Try Bluetooth again") }
+            }
+            val sending by OfferedFile.progress.collectAsState()
+            sending?.let { pr ->
+                val via = pr.via
+                if (via != null && (pr.sent > 0 || pr.verdict != null)) {
                     LinearProgressIndicator(progress = { pr.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), color = Teal)
                     Text(
                         when (pr.verdict) {
-                            true -> "Sent over NFC and verified on the other phone."
-                            false -> "The other phone's copy did not verify; it will start over on the next tap."
-                            null -> "Sending over NFC: ${pr.sent / 1024} of ${pr.total / 1024} KB. Keep the phones touching."
+                            true -> "Sent over $via and verified on the other phone."
+                            false -> "The other phone's copy did not verify; it will start over on its next try."
+                            null -> "Sending over $via: ${pr.sent / 1024} of ${pr.total / 1024} KB." + if (via == OfferedFile.VIA_NFC) " Keep the phones touching." else ""
                         },
                         style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
                     )
@@ -144,7 +158,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
                 when {
                     nfc == null || !nfc.available -> "This phone has no NFC."
                     !nfc.enabled -> "NFC is off. Turn it on in system settings for tap-to-share."
-                    else -> "NFC ready: hold the phones back-to-back. The other phone needs CUEd installed and its screen on; it reads this one like a tag and opens the share straight in CUEd. With no shared Wi-Fi, its card offers \"Copy over NFC\": keep the phones together and the whole file crosses by NFC alone. No CUEd on that phone yet? Let it scan the QR code instead: that opens the download page."
+                    else -> "NFC ready: hold the phones back-to-back. The other phone needs CUEd installed and its screen on; it reads this one like a tag and opens the share straight in CUEd. With no shared Wi-Fi the file follows over Bluetooth by itself; if Bluetooth is off, its card offers \"Copy over NFC\" and the whole file crosses by NFC alone while the phones stay together. No CUEd on that phone yet? Let it scan the QR code instead: that opens the download page."
                 }, style = MaterialTheme.typography.bodySmall, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center,
             )
             nfcProblem?.let { Text("NFC note: $it. If the phone asks which NFC service to use, pick CUEd.", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
@@ -223,7 +237,7 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
             )
             if (reader?.enabled == true && nfc != null) {
                 Text(
-                    "No Wi-Fi or hotspot in common? The whole song can still cross by NFC alone. It is slow (a few minutes per song) and the phones must stay touching, but it needs no network at all.",
+                    "No Wi-Fi in common? After a tap or a QR scan the song comes over Bluetooth by itself. With Bluetooth off as well, it can still cross by NFC alone: slow (a few minutes per song) and the phones must stay touching, but no other radio is needed.",
                     style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp),
                 )
                 if (!nfcListening) Button(onClick = { startedHere = nfc.start(null) }, modifier = Modifier.padding(top = 8.dp)) { Text("Receive a file over NFC") }

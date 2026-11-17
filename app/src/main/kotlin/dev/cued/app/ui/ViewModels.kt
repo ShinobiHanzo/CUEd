@@ -349,13 +349,24 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
     val state: StateFlow<ShareUiState> = _state
     private var trackId: Long? = null
 
+    // Network-free transfer: Bluetooth carries the file, the NFC tap or the QR code only introduces the phones.
+    private val btSender = dev.cued.app.share.bt.BtFileSender(graph.app)
+    private val btReceiver = dev.cued.app.share.bt.BtFileReceiver(graph)
+    /** Whether this phone is serving the shared file over Bluetooth, and if not, why. */
+    val bluetooth: StateFlow<dev.cued.app.share.bt.BtFileSender.Status> = btSender.status
+    fun blePermissions(): Array<String> = dev.cued.app.party.PartyHost.blePermissions()
+    /** Why a Bluetooth copy cannot start on this phone right now; null when it can. */
+    fun bluetoothBlocker(): String? = btReceiver.unavailableReason()
+    /** After the Nearby devices permission was answered on the Share screen. */
+    fun refreshBluetooth() = rebuild()
+
     fun startSharing(trackId: Long) {
         this.trackId = trackId
         viewModelScope.launch {
             val port = graph.settings.sharePort.first()
             val url = withContext(Dispatchers.IO) { graph.shareServer.start(port) }
             graph.shareServer.offer(trackId)
-            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address: the file can still go over NFC (hold the phones together), and the link by QR" else null)
+            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address. The file still goes over Bluetooth (or NFC alone) after a tap or a QR scan." else null)
             rebuild()
         }
     }
@@ -373,16 +384,17 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             // The friend request rides along as the public key only; the private key never leaves the phone.
             val friendKey = if (s.includeFriend) runCatching { graph.station.store.ensureIdentity().pubkeyHex }.getOrNull() else null
             val friendName = friendKey?.let { graph.station.store.name.first().ifBlank { graph.desktop.store.phoneName.first() }.takeIf { n -> n.isNotBlank() } }
-            // The file goes over NFC alone as well (no network needed): mapped once for the HCE service.
-            val nfcOffered = s.includeFile && withContext(Dispatchers.IO) { dev.cued.app.share.nfc.NfcTransferHolder.offer(graph.app, t, genres) }
-            if (!s.includeFile) dev.cued.app.share.nfc.NfcTransferHolder.clear()
+            // The file also goes without any network: mapped once, then served over Bluetooth and, as the fallback, over NFC alone.
+            val offered = s.includeFile && withContext(Dispatchers.IO) { dev.cued.app.share.OfferedFile.offer(graph.app, t, genres) }
+            val btToken = if (offered) withContext(Dispatchers.IO) { btSender.start() } else null
+            if (!offered) { btSender.stop(); dev.cued.app.share.OfferedFile.clear() }
             val sp = SharePayload(
                 title = t.title, artist = t.artist, link = t.sourceLink,
                 fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
                 apkUrl = if (s.includeApk) graph.shareServer.apkUrl() else null,
                 genres = genres, bpm = t.bpm,
                 friendPubkey = friendKey, friendName = friendName,
-                nfcFile = nfcOffered,
+                nfcFile = offered, btToken = btToken,
             )
             // QR carries the web form: a stock camera lands on the download page, CUEd opens it directly.
             // NFC leads with the cued:// form so the receiving CUEd launches straight away (see SharePayloadHolder).
@@ -395,7 +407,8 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
 
     fun stopSharing() {
         dev.cued.app.share.nfc.SharePayloadHolder.set(null, null)
-        dev.cued.app.share.nfc.NfcTransferHolder.clear()
+        btSender.stop()
+        dev.cued.app.share.OfferedFile.clear()
         graph.shareServer.stop()
         _state.value = ShareUiState()
     }
@@ -422,57 +435,92 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             seen[key] = again; _received.value = again
             return "Already received ${payload.title}"
         }
-        fun update(st: ReceiveStatus) { val r = Received(payload, st, prev?.repeats ?: 0); seen[key] = r; _received.value = r }
-        val initial = when {
+        fun update(st: ReceiveStatus) = put(payload, st)
+        // Order of preference: the Wi-Fi link (fastest), then Bluetooth by itself, then whatever needs a person (permission, NFC).
+        val canBluetooth = payload.btToken != null && btReceiver.unavailableReason() == null
+        val direct = payload.btToken != null || payload.nfcFile
+        update(when {
             payload.fileUrl != null -> ReceiveStatus.Fetching
-            payload.nfcFile -> ReceiveStatus.NfcOffered // the other phone has no network address; the card offers the NFC copy
+            canBluetooth -> ReceiveStatus.Direct(0, 0, LOOKING, dev.cued.app.share.OfferedFile.VIA_BLUETOOTH)
+            direct -> ReceiveStatus.DirectOffered
             payload.link != null -> ReceiveStatus.Queued
             else -> ReceiveStatus.Failed("Nothing downloadable in this share")
-        }
-        update(initial)
+        })
         viewModelScope.launch {
+            if (payload.fileUrl != null || canBluetooth) {
+                val dup = if (force) null else graph.db.tracks().byTitleArtist(payload.title, payload.artist)
+                if (dup != null) { update(ReceiveStatus.AlreadyHave(dup.id)); return@launch }
+            }
             when {
                 payload.fileUrl != null -> {
-                    val dup = if (force) null else graph.db.tracks().byTitleArtist(payload.title, payload.artist)
-                    if (dup != null) { update(ReceiveStatus.AlreadyHave(dup.id)); return@launch }
                     update(ReceiveStatus.Fetching)
                     runCatching { LocalFileReceiver(graph).fetch(payload) }
                         .onSuccess { id -> update(if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it")) }
-                        .onFailure { update(ReceiveStatus.Failed(it.message ?: "Transfer failed")) }
+                        .onFailure { e ->
+                            // No network in common: Bluetooth takes over by itself when it can.
+                            if (payload.btToken != null && btReceiver.unavailableReason() == null) bluetooth(payload)
+                            else update(ReceiveStatus.Failed(e.message ?: "Transfer failed"))
+                        }
                 }
-                payload.nfcFile -> {} // waits for "Copy over NFC" on the card (NfcFileReceiver reports through setStatus)
+                canBluetooth -> bluetooth(payload)
+                direct -> {} // waits for a button on the card: Bluetooth needs a permission or to be switched on, or only NFC is offered
                 payload.link != null -> { graph.downloads.enqueue(payload.link!!, payload.title, payload.artist); update(ReceiveStatus.Queued) }
                 else -> update(ReceiveStatus.Failed("Nothing downloadable in this share"))
             }
         }
         return when {
             payload.fileUrl != null -> "Fetching ${payload.title} from the other phone…"
-            payload.nfcFile -> "${payload.title} can be copied over NFC"
+            canBluetooth -> "Copying ${payload.title} over Bluetooth…"
+            direct -> "${payload.title} can be copied over Bluetooth or NFC"
             else -> "Queued ${payload.title} for download"
         }
     }
 
-    /** Status pushed from outside the fetch path (the NFC receiver): shows and remembers the card for [payload]. */
+    private fun put(payload: SharePayload, st: ReceiveStatus) {
+        val key = payload.fileUrl ?: payload.link ?: "${payload.artist}|${payload.title}"
+        val r = Received(payload, st, seen[key]?.repeats ?: 0)
+        seen[key] = r
+        _received.value = r
+    }
+
+    /** Status pushed from a transfer thread (Bluetooth, NFC): shows and remembers the card for [payload]. */
     fun setStatus(payload: SharePayload, st: ReceiveStatus) {
-        // Called from the NFC callback thread: hop to main so [seen] has one writer.
-        viewModelScope.launch {
-            val key = payload.fileUrl ?: payload.link ?: "${payload.artist}|${payload.title}"
-            val r = Received(payload, st, seen[key]?.repeats ?: 0)
-            seen[key] = r
-            _received.value = r
+        viewModelScope.launch { put(payload, st) } // hop to main so [seen] has one writer
+    }
+
+    private var btJob: kotlinx.coroutines.Job? = null
+
+    /** "Copy over Bluetooth" on the card (also what runs by itself when nothing stands in the way). */
+    fun receiveOverBluetooth(payload: SharePayload) {
+        if (btJob?.isActive == true) return
+        btJob = viewModelScope.launch { bluetooth(payload) }
+    }
+
+    private suspend fun bluetooth(payload: SharePayload) {
+        put(payload, ReceiveStatus.Direct(0, 0, LOOKING, dev.cued.app.share.OfferedFile.VIA_BLUETOOTH))
+        try {
+            val id = btReceiver.fetch(payload, ::setStatus)
+            // Queued behind the progress updates above, so it lands last.
+            setStatus(payload, if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it"))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            setStatus(payload, ReceiveStatus.Failed(e.message ?: "Bluetooth transfer failed"))
         }
     }
 
-    /** "Download from the source instead": the fallback for an NFC-only share when the other phone is out of reach. */
+    /** "Download from the source instead": the fallback when the other phone is out of reach. */
     fun queueFromLink(payload: SharePayload) {
         val link = payload.link ?: return
         graph.downloads.enqueue(link, payload.title, payload.artist)
-        setStatus(payload, ReceiveStatus.Queued)
+        put(payload, ReceiveStatus.Queued)
     }
 
     fun dismissReceived() { _received.value = null }
 
     override fun onCleared() { stopSharing() }
+
+    private companion object { const val LOOKING = "Looking for the other phone over Bluetooth…" }
 }
 
 sealed class ReceiveStatus {
@@ -482,11 +530,13 @@ sealed class ReceiveStatus {
     data class Done(val trackId: Long) : ReceiveStatus()
     data class AlreadyHave(val trackId: Long) : ReceiveStatus()
     data class Failed(val reason: String) : ReceiveStatus()
-    /** The share carries no network address for the file, but the other phone offers it over NFC; waiting for the person to start that. */
-    data object NfcOffered : ReceiveStatus()
-    /** Copying over NFC: [have] of [total] bytes (0/0 before the first slice), with a line for the card. */
-    data class Nfc(val have: Long, val total: Long, val note: String) : ReceiveStatus() {
+    /** The other phone offers the file without a network (Bluetooth and/or NFC), and starting that needs a person: a permission, a switch, or a tap. */
+    data object DirectOffered : ReceiveStatus()
+    /** Copying phone to phone over [via] (Bluetooth or NFC): [have] of [total] bytes (0/0 before the first one), with a line for the card. */
+    data class Direct(val have: Long, val total: Long, val note: String, val via: String) : ReceiveStatus() {
         val fraction: Float? get() = if (total <= 0) null else (have.toDouble() / total).toFloat().coerceIn(0f, 1f)
+        /** Still under way (as opposed to all bytes in, being verified and filed). */
+        val running: Boolean get() = total <= 0 || have < total
     }
 }
 

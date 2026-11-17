@@ -30,6 +30,8 @@ data class SharePayload(
     val friendName: String? = null,
     /** The sender's Share screen also serves the file over NFC alone (no network needed; see `dev.cued.core.nfc.NfcTransfer`). */
     val nfcFile: Boolean = false,
+    /** One-time token: the sender advertises it over Bluetooth and serves the file to whoever presents it (`dev.cued.core.nfc.BtTransfer`). */
+    val btToken: String? = null,
 ) {
     fun encode(): String = "${CuedCore.SHARE_SCHEME}://share?" + query()
 
@@ -52,6 +54,7 @@ data class SharePayload(
         bpm?.let { q["b"] = "%.1f".format(java.util.Locale.ROOT, it) }
         friendPubkey?.let { q["fr"] = it; friendName?.let { n -> q["fn"] = n } }
         if (nfcFile) q["n"] = "1"
+        btToken?.let { q["bt"] = it }
         return q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
 
@@ -85,6 +88,7 @@ data class SharePayload(
                 friendPubkey = q["fr"]?.lowercase()?.takeIf { it.length == 64 && it.all { c -> Character.digit(c, 16) >= 0 } },
                 friendName = q["fn"],
                 nfcFile = q["n"] == "1",
+                btToken = q["bt"]?.lowercase()?.takeIf { dev.cued.core.nfc.BtTransfer.isToken(it) },
             )
         }
 

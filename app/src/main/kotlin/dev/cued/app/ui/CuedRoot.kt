@@ -211,22 +211,44 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         }
     }
 
-    // Whole-file NFC transfer (reader side); one per activity so the card and the Receive screen never fight over reader mode.
+    // Phone-to-phone copies without a network. Bluetooth runs from the view model; the NFC-only fallback needs the
+    // activity for reader mode, one receiver per activity so the card and the Receive screen never fight over it.
     val nfcReceiver = remember(context) { (context as? android.app.Activity)?.let { dev.cued.app.share.nfc.NfcFileReceiver(it, graph, svm::setStatus) } }
     androidx.compose.runtime.DisposableEffect(nfcReceiver) { onDispose { nfcReceiver?.stop() } }
     val received by svm.received.collectAsState()
+    val btPermission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        val p = svm.received.value?.payload ?: return@rememberLauncherForActivityResult
+        if (granted.values.all { it }) startBluetoothCopy(svm, p)
+        else svm.setStatus(p, ReceiveStatus.Failed("Without the Nearby devices permission the file cannot come over Bluetooth."))
+    }
+    // A share that could come over Bluetooth but for the permission: ask once, right when it arrives.
+    var askedBtFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(received?.payload?.btToken, received?.status) {
+        val r = received ?: return@LaunchedEffect
+        val token = r.payload.btToken ?: return@LaunchedEffect
+        if (r.status is ReceiveStatus.DirectOffered && askedBtFor != token && svm.bluetoothBlocker() == dev.cued.app.share.bt.BtFileReceiver.NEEDS_PERMISSION) {
+            askedBtFor = token
+            btPermission.launch(svm.blePermissions())
+        }
+    }
     received?.let { r ->
+        val nfcRunning = (r.status as? ReceiveStatus.Direct)?.let { it.running && it.via == dev.cued.app.share.OfferedFile.VIA_NFC } == true
         ReceivedSplash(
             received = r,
             onPlay = { t -> pvm.play(listOf(t)); svm.dismissReceived(); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
             onOpenDownloads = { svm.dismissReceived(); nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } },
             onFetchAnyway = { svm.receive(r.payload, force = true) },
-            onDismiss = { if (r.status is ReceiveStatus.Nfc) nfcReceiver?.stop(); svm.dismissReceived() },
+            onDismiss = { if (nfcRunning) nfcReceiver?.stop(); svm.dismissReceived() },
+            onBluetooth = {
+                if (svm.bluetoothBlocker() == dev.cued.app.share.bt.BtFileReceiver.NEEDS_PERMISSION) btPermission.launch(svm.blePermissions())
+                else startBluetoothCopy(svm, r.payload)
+            },
             onNfc = {
-                val ok = nfcReceiver?.start(r.payload) == true
-                if (!ok) scope.launch { snackbar.showSnackbar(if (nfcReceiver?.available != true) "This phone has no NFC" else "NFC is off. Turn it on in system settings.") }
+                // The card is a full-screen dialog, so a problem is shown on the card itself, not in a snackbar behind it.
+                if (nfcReceiver?.start(r.payload) != true) svm.setStatus(r.payload, ReceiveStatus.Failed(if (nfcReceiver?.available != true) "This phone has no NFC." else "NFC is off. Turn it on in system settings, then try again."))
             },
             onQueueLink = { svm.queueFromLink(r.payload) },
+            bluetoothBlocker = if (r.status is ReceiveStatus.DirectOffered) svm.bluetoothBlocker() else null,
         )
     }
 
@@ -611,4 +633,10 @@ private fun MovingPrompt(speedKmh: Float, onStay: () -> Unit, onCarMode: () -> U
         confirmButton = { Button(onClick = onCarMode) { Text("Car mode now") } },
         dismissButton = { TextButton(onClick = onStay) { Text("Stay") } },
     )
+}
+
+/** Starts the Bluetooth copy for a received share, or puts the reason it cannot start (Bluetooth off, too old) on its card. */
+private fun startBluetoothCopy(svm: ShareViewModel, payload: dev.cued.core.share.SharePayload) {
+    val why = svm.bluetoothBlocker()
+    if (why == null) svm.receiveOverBluetooth(payload) else svm.setStatus(payload, ReceiveStatus.Failed(why))
 }

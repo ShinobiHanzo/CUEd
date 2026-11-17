@@ -2,6 +2,7 @@ package dev.cued.app.share.nfc
 
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
+import dev.cued.app.share.OfferedFile
 
 /**
  * Tap-to-share without anything running on the receiving phone: this phone
@@ -16,7 +17,7 @@ import android.os.Bundle
  * Under the CUEd AID the same service also hands out the whole audio file
  * to a CUEd phone in reader mode (`dev.cued.core.nfc.NfcTransfer`, INS C0–C2):
  * tap-to-share that needs no Wi-Fi at all. The offered file lives in
- * [NfcTransferHolder] while the Share screen is open.
+ * [OfferedFile] while the Share screen is open.
  */
 class CuedHceService : HostApduService() {
     private var selected: ByteArray? = null
@@ -25,9 +26,9 @@ class CuedHceService : HostApduService() {
         val apdu = commandApdu ?: return SW_ERROR
         val ndefFile = SharePayloadHolder.ndefFile ?: return SW_NO_DATA
         // Whole-file transfer (CLA 80, INS C0..C2) comes before the legacy branches; it never overlaps them.
-        NfcTransferHolder.responder?.let { r ->
+        OfferedFile.responder?.let { r ->
             r.handle(apdu)?.let { reply ->
-                if (apdu.size >= 2 && apdu[1] == dev.cued.core.nfc.NfcTransfer.INS_DONE) NfcTransferHolder.noteVerdict(apdu[2] == 0x01.toByte())
+                if (apdu[1] == dev.cued.core.nfc.NfcTransfer.INS_DONE) OfferedFile.noteVerdict(apdu[2] == 0x01.toByte(), OfferedFile.VIA_NFC)
                 return reply
             }
         }

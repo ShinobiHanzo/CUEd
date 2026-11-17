@@ -5,12 +5,15 @@ so keep them short and written for the person holding the phone.
 
 ## 0.3.3
 
-- **Share a song over NFC alone.** Tap-to-share used to hand over a Wi-Fi address, so both phones
-  had to be on the same network. Now the whole file can cross by NFC by itself: no Wi-Fi, no
-  hotspot, no internet. When the other phone cannot be reached, the card that opens on a tap
-  offers *Copy over NFC* (Receive has *Receive a file over NFC* too); hold the phones together
-  until the bar fills. It is slow, a few minutes per song, and a slip only pauses it: the next
-  tap carries on from the same byte. The copy is hash-checked before it goes into your library.
+- **Share a song with no Wi-Fi at all.** Tap-to-share and the QR code used to hand over a Wi-Fi
+  address, so both phones had to be on the same network. Now the tap (or the scan) only
+  introduces the phones and the file crosses over Bluetooth by itself: no Wi-Fi, no hotspot, no
+  internet, no pairing. Allow *Nearby devices* once on each phone; it needs Android 10 or later.
+- **NFC alone as the last resort.** With Bluetooth off as well, the card that opens on a tap
+  offers *Copy over NFC* (Receive has *Receive a file over NFC* too): hold the phones together
+  until the bar fills. It is slow, a few minutes per song.
+- Either way a dropped link only pauses the copy: it carries on from the same byte, and the file
+  is hash-checked before it goes into your library.
 
 ## 0.3.2
 
