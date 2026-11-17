@@ -3,6 +3,16 @@
 The sections below are shown in the app after an update (side menu → Settings → Updates → What's new),
 so keep them short and written for the person holding the phone.
 
+## 0.3.4
+
+- **Phone-to-phone sharing at Wi-Fi speed.** With no Wi-Fi network in common, the tap or the QR
+  scan now links the two phones directly over Wi-Fi Direct, the way AirDrop works: a song
+  arrives in a few seconds, with no router, hotspot, internet or pairing. Wi-Fi only has to be
+  switched on. Allow *Nearby devices* once on each phone (Android 12 and older ask for Location
+  instead and need it switched on; CUEd reads no location). Needs Android 10 or later.
+- Bluetooth stays as the second choice and NFC alone as the last; the card says which one is
+  running and why a faster one was skipped.
+
 ## 0.3.3
 
 - **Share a song with no Wi-Fi at all.** Tap-to-share and the QR code used to hand over a Wi-Fi

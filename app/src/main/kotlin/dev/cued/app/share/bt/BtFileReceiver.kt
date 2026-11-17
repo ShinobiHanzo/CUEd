@@ -50,14 +50,14 @@ class BtFileReceiver(private val graph: Graph) {
 
     /** Returns the new library track id (null if the scan missed the file). Throws with a message for the card when the copy cannot be made. */
     @SuppressLint("MissingPermission", "NewApi") // API 29+ is checked in unavailableReason()
-    suspend fun fetch(payload: SharePayload, onStatus: (SharePayload, ReceiveStatus) -> Unit): Long? = withContext(Dispatchers.IO) {
+    suspend fun fetch(payload: SharePayload, onStatus: (SharePayload, ReceiveStatus) -> Unit, hint: String = ""): Long? = withContext(Dispatchers.IO) {
         val token = payload.btToken ?: error("This share has no Bluetooth offer")
         unavailableReason()?.let { error(it) }
         var have = 0L
         var total = 0L
         var lastDrop: IOException? = null
         for (attempt in 1..ATTEMPTS) {
-            onStatus(payload, ReceiveStatus.Direct(have, total, if (attempt == 1) "Looking for the other phone over Bluetooth…" else "The link dropped. Reconnecting…", VIA))
+            onStatus(payload, ReceiveStatus.Direct(have, total, (if (attempt == 1) "Looking for the other phone over Bluetooth…" else "The link dropped. Reconnecting…") + hint, VIA))
             val (device, psm) = find(token) ?: error("Could not find the other phone over Bluetooth. Keep its Share screen open and the phones within a few metres.")
             val sock = device.createInsecureL2capChannel(psm)
             try {
@@ -73,7 +73,7 @@ class BtFileReceiver(private val graph: Graph) {
                     BtTransfer.pull(input, output, header, part.have, { b, n -> part.append(b, n) }) { got, all ->
                         have = got
                         val now = SystemClock.elapsedRealtime()
-                        if (now - shownAt >= 200 || got >= all) { shownAt = now; onStatus(payload, ReceiveStatus.Direct(got, all, "Copying over Bluetooth. Keep the phones within a few metres.", VIA)) }
+                        if (now - shownAt >= 200 || got >= all) { shownAt = now; onStatus(payload, ReceiveStatus.Direct(got, all, "Copying over Bluetooth. Keep the phones within a few metres.$hint", VIA)) }
                     }
                     val ok = part.verify()
                     runCatching { BtTransfer.verdict(output, ok); delay(250) } // let the byte leave before the link closes

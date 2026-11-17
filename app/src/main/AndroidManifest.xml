@@ -35,6 +35,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Sharing without a network: Wi-Fi Direct carries the file between two phones (no router, no internet). Never used for location;
+         before Android 13 the platform ties Wi-Fi Direct to the location permission above. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" tools:targetApi="tiramisu" />
     <!-- Desktop link: reads from outside the LAN are signed with a biometric-gated key (CUEd-desktop protocol §7) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
@@ -45,6 +49,7 @@
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />

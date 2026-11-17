@@ -350,15 +350,32 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
     private var trackId: Long? = null
 
     // Network-free transfer: Bluetooth carries the file, the NFC tap or the QR code only introduces the phones.
+    // Fastest first: a Wi-Fi Direct group (Wi-Fi speed, no router), then a Bluetooth channel, then NFC alone.
+    private val wifiHost = dev.cued.app.share.wifi.WifiDirectHost(graph.app)
+    private val wifiReceiver = dev.cued.app.share.wifi.WifiDirectReceiver(graph)
+    private var wifiStarting = false
     private val btSender = dev.cued.app.share.bt.BtFileSender(graph.app)
     private val btReceiver = dev.cued.app.share.bt.BtFileReceiver(graph)
+    /** Whether this phone has a Wi-Fi Direct group open for the shared file, and if not, why. */
+    val wifiDirect: StateFlow<dev.cued.app.share.wifi.WifiDirectHost.Status> = wifiHost.status
     /** Whether this phone is serving the shared file over Bluetooth, and if not, why. */
     val bluetooth: StateFlow<dev.cued.app.share.bt.BtFileSender.Status> = btSender.status
-    fun blePermissions(): Array<String> = dev.cued.app.party.PartyHost.blePermissions()
-    /** Why a Bluetooth copy cannot start on this phone right now; null when it can. */
-    fun bluetoothBlocker(): String? = btReceiver.unavailableReason()
-    /** After the Nearby devices permission was answered on the Share screen. */
-    fun refreshBluetooth() = rebuild()
+    /** Everything the phone-to-phone paths need, asked in one go ("Nearby devices"; location on Android 12 and older). */
+    fun directPermissions(): Array<String> = (dev.cued.app.party.PartyHost.blePermissions() + dev.cued.app.share.wifi.WifiDirect.permissions()).distinct().toTypedArray()
+    /** After a permission was answered, or the screen came back: start whatever can start now. */
+    fun refreshDirect() = rebuild()
+
+    private fun wifiBlocker(p: SharePayload): String? = if (p.hasP2p) wifiReceiver.unavailableReason() else NOT_OFFERED
+    private fun btBlocker(p: SharePayload): String? = if (p.btToken != null) btReceiver.unavailableReason() else NOT_OFFERED
+    /** Why no phone-to-phone copy of [p] can start on this phone right now; null when one can. */
+    fun directBlocker(p: SharePayload): String? {
+        val w = wifiBlocker(p); val b = btBlocker(p)
+        if (w == null || b == null) return null
+        return listOf(w, b).filter { it != NOT_OFFERED }.distinct().joinToString("; ").ifEmpty { "This share offers no phone-to-phone copy" }
+    }
+    /** True when a path this share offers is held back only by a permission: worth asking before settling for a slower one. */
+    fun directNeedsPermission(p: SharePayload): Boolean =
+        wifiBlocker(p) == dev.cued.app.share.wifi.WifiDirect.NEEDS_PERMISSION || btBlocker(p) == dev.cued.app.share.bt.BtFileReceiver.NEEDS_PERMISSION
 
     fun startSharing(trackId: Long) {
         this.trackId = trackId
@@ -366,7 +383,7 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             val port = graph.settings.sharePort.first()
             val url = withContext(Dispatchers.IO) { graph.shareServer.start(port) }
             graph.shareServer.offer(trackId)
-            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address. The file still goes over Bluetooth (or NFC alone) after a tap or a QR scan." else null)
+            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address. The file still goes phone to phone (Wi-Fi Direct or Bluetooth) after a tap or a QR scan." else null)
             rebuild()
         }
     }
@@ -387,7 +404,14 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             // The file also goes without any network: mapped once, then served over Bluetooth and, as the fallback, over NFC alone.
             val offered = s.includeFile && withContext(Dispatchers.IO) { dev.cued.app.share.OfferedFile.offer(graph.app, t, genres) }
             val btToken = if (offered) withContext(Dispatchers.IO) { btSender.start() } else null
-            if (!offered) { btSender.stop(); dev.cued.app.share.OfferedFile.clear() }
+            if (!offered) { wifiHost.stop(); btSender.stop(); dev.cued.app.share.OfferedFile.clear() }
+            // The Wi-Fi Direct group takes a few seconds to come up: the share goes out without it first and is rebuilt once it is there.
+            val p2p = if (offered) wifiHost.status.value.offer else null
+            val p2pPort = graph.shareServer.listeningPort
+            if (offered && p2p == null && !wifiStarting) {
+                wifiStarting = true
+                viewModelScope.launch { val o = try { wifiHost.start() } finally { wifiStarting = false }; if (o != null) rebuild() }
+            }
             val sp = SharePayload(
                 title = t.title, artist = t.artist, link = t.sourceLink,
                 fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
@@ -395,6 +419,8 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
                 genres = genres, bpm = t.bpm,
                 friendPubkey = friendKey, friendName = friendName,
                 nfcFile = offered, btToken = btToken,
+                p2pName = p2p?.name.takeIf { p2pPort != null }, p2pPass = p2p?.pass, p2pFreq = p2p?.freq,
+                p2pUrl = if (p2p != null && p2pPort != null) "http://${dev.cued.app.share.wifi.WifiDirect.OWNER_ADDRESS}:$p2pPort/track/$id" else null,
             )
             // QR carries the web form: a stock camera lands on the download page, CUEd opens it directly.
             // NFC leads with the cued:// form so the receiving CUEd launches straight away (see SharePayloadHolder).
@@ -407,6 +433,7 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
 
     fun stopSharing() {
         dev.cued.app.share.nfc.SharePayloadHolder.set(null, null)
+        wifiHost.stop()
         btSender.stop()
         dev.cued.app.share.OfferedFile.clear()
         graph.shareServer.stop()
@@ -436,42 +463,47 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             return "Already received ${payload.title}"
         }
         fun update(st: ReceiveStatus) = put(payload, st)
-        // Order of preference: the Wi-Fi link (fastest), then Bluetooth by itself, then whatever needs a person (permission, NFC).
-        val canBluetooth = payload.btToken != null && btReceiver.unavailableReason() == null
-        val direct = payload.btToken != null || payload.nfcFile
+        // Order of preference: a network both phones are already on, then Wi-Fi Direct, then Bluetooth; NFC alone only on request.
+        val offersDirect = payload.hasP2p || payload.btToken != null
+        // Start by itself only when nothing a person could fix stands in the way; a missing permission is asked for first (the card does that).
+        val canDirect = offersDirect && directBlocker(payload) == null && !directNeedsPermission(payload)
+        val waits = offersDirect || payload.nfcFile
         update(when {
             payload.fileUrl != null -> ReceiveStatus.Fetching
-            canBluetooth -> ReceiveStatus.Direct(0, 0, LOOKING, dev.cued.app.share.OfferedFile.VIA_BLUETOOTH)
-            direct -> ReceiveStatus.DirectOffered
+            canDirect -> ReceiveStatus.Direct(0, 0, CONNECTING, if (wifiBlocker(payload) == null) dev.cued.app.share.wifi.WifiDirect.VIA else dev.cued.app.share.OfferedFile.VIA_BLUETOOTH)
+            waits -> ReceiveStatus.DirectOffered
             payload.link != null -> ReceiveStatus.Queued
             else -> ReceiveStatus.Failed("Nothing downloadable in this share")
         })
         viewModelScope.launch {
-            if (payload.fileUrl != null || canBluetooth) {
+            if (payload.fileUrl != null || canDirect) {
                 val dup = if (force) null else graph.db.tracks().byTitleArtist(payload.title, payload.artist)
                 if (dup != null) { update(ReceiveStatus.AlreadyHave(dup.id)); return@launch }
             }
             when {
                 payload.fileUrl != null -> {
                     update(ReceiveStatus.Fetching)
-                    runCatching { LocalFileReceiver(graph).fetch(payload) }
+                    // With another way across on offer, do not wait long for a LAN address that is probably not ours.
+                    runCatching { LocalFileReceiver(graph).fetch(payload, connectTimeoutMs = if (offersDirect) 2_500 else 8_000) }
                         .onSuccess { id -> update(if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it")) }
                         .onFailure { e ->
-                            // No network in common: Bluetooth takes over by itself when it can.
-                            if (payload.btToken != null && btReceiver.unavailableReason() == null) bluetooth(payload)
-                            else update(ReceiveStatus.Failed(e.message ?: "Transfer failed"))
+                            when {
+                                canDirect -> direct(payload)
+                                waits -> update(ReceiveStatus.DirectOffered)
+                                else -> update(ReceiveStatus.Failed(e.message ?: "Transfer failed"))
+                            }
                         }
                 }
-                canBluetooth -> bluetooth(payload)
-                direct -> {} // waits for a button on the card: Bluetooth needs a permission or to be switched on, or only NFC is offered
+                canDirect -> direct(payload)
+                waits -> {} // waits for the card: a permission to grant, a radio to switch on, or the NFC copy to start
                 payload.link != null -> { graph.downloads.enqueue(payload.link!!, payload.title, payload.artist); update(ReceiveStatus.Queued) }
                 else -> update(ReceiveStatus.Failed("Nothing downloadable in this share"))
             }
         }
         return when {
             payload.fileUrl != null -> "Fetching ${payload.title} from the other phone…"
-            canBluetooth -> "Copying ${payload.title} over Bluetooth…"
-            direct -> "${payload.title} can be copied over Bluetooth or NFC"
+            canDirect -> "Copying ${payload.title} from the other phone…"
+            waits -> "${payload.title} can be copied phone to phone"
             else -> "Queued ${payload.title} for download"
         }
     }
@@ -488,25 +520,33 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
         viewModelScope.launch { put(payload, st) } // hop to main so [seen] has one writer
     }
 
-    private var btJob: kotlinx.coroutines.Job? = null
+    private var directJob: kotlinx.coroutines.Job? = null
 
-    /** "Copy over Bluetooth" on the card (also what runs by itself when nothing stands in the way). */
-    fun receiveOverBluetooth(payload: SharePayload) {
-        if (btJob?.isActive == true) return
-        btJob = viewModelScope.launch { bluetooth(payload) }
+    /** "Copy phone to phone" on the card (also what runs by itself when nothing stands in the way). */
+    fun receiveDirect(payload: SharePayload) {
+        if (directJob?.isActive == true) return
+        directJob = viewModelScope.launch { direct(payload) }
     }
 
-    private suspend fun bluetooth(payload: SharePayload) {
-        put(payload, ReceiveStatus.Direct(0, 0, LOOKING, dev.cued.app.share.OfferedFile.VIA_BLUETOOTH))
-        try {
-            val id = btReceiver.fetch(payload, ::setStatus)
-            // Queued behind the progress updates above, so it lands last.
-            setStatus(payload, if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it"))
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            setStatus(payload, ReceiveStatus.Failed(e.message ?: "Bluetooth transfer failed"))
+    /** Wi-Fi Direct first, Bluetooth if that cannot be used or fails; the card ends on what was tried and why it did not work. */
+    private suspend fun direct(payload: SharePayload) {
+        val tried = ArrayList<String>()
+        fun done(id: Long?) = setStatus(payload, if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it"))
+        if (wifiBlocker(payload) == null) {
+            put(payload, ReceiveStatus.Direct(0, 0, CONNECTING, dev.cued.app.share.wifi.WifiDirect.VIA))
+            try { done(wifiReceiver.fetch(payload, ::setStatus)); return }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { tried += "Wi-Fi Direct: ${e.message ?: "failed"}" }
         }
+        if (btBlocker(payload) == null) {
+            // When the fast path was on offer but could not be used, the card says so while the slower copy runs.
+            val hint = (tried.firstOrNull() ?: wifiBlocker(payload)?.takeIf { it != NOT_OFFERED })?.let { " Wi-Fi Direct would be much faster ($it)." }.orEmpty()
+            setStatus(payload, ReceiveStatus.Direct(0, 0, "Looking for the other phone over Bluetooth…$hint", dev.cued.app.share.OfferedFile.VIA_BLUETOOTH))
+            try { done(btReceiver.fetch(payload, ::setStatus, hint)); return }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { tried += "Bluetooth: ${e.message ?: "failed"}" }
+        }
+        setStatus(payload, ReceiveStatus.Failed(tried.joinToString("\n").ifEmpty { directBlocker(payload) ?: "This share offers no phone-to-phone copy" }))
     }
 
     /** "Download from the source instead": the fallback when the other phone is out of reach. */
@@ -520,7 +560,11 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
 
     override fun onCleared() { stopSharing() }
 
-    private companion object { const val LOOKING = "Looking for the other phone over Bluetooth…" }
+    private companion object {
+        const val CONNECTING = "Connecting to the other phone…"
+        /** Marks a path the share does not offer at all (as opposed to one this phone cannot use right now). */
+        const val NOT_OFFERED = "not offered"
+    }
 }
 
 sealed class ReceiveStatus {
@@ -545,28 +589,49 @@ data class Received(val payload: SharePayload, val status: ReceiveStatus, val re
 /** Pulls a track file from another phone's share server straight into Music/CUEd. */
 class LocalFileReceiver(private val graph: Graph) {
     /** Returns the new library track id, or null if the file landed but the scan did not pick it up. Throws on transfer errors. */
-    suspend fun fetch(payload: SharePayload): Long? = withContext(Dispatchers.IO) {
-        val url = payload.fileUrl ?: error("No file in this share")
-        val conn = try { java.net.URL(url).openConnection() as java.net.HttpURLConnection } catch (e: Exception) { error("Bad file link") }
-        conn.connectTimeout = 8_000; conn.readTimeout = 120_000
-        try {
-            val code = try { conn.responseCode } catch (e: java.io.IOException) { error("Could not reach the other phone. Both phones need to be on the same Wi-Fi or hotspot, with its Share screen still open.") }
-            if (code !in 200..299) error("The other phone answered $code. Is its Share screen still open?")
-            val mime = conn.contentType?.substringBefore(';') ?: "audio/mpeg"
-            conn.inputStream.use { place(payload, mime, it) }
-        } finally { conn.disconnect() }
+    suspend fun fetch(payload: SharePayload, connectTimeoutMs: Int = 8_000): Long? =
+        fetchUrl(payload, payload.fileUrl ?: error("No file in this share"), connectTimeoutMs)
+
+    /**
+     * Fetches [url] (the other phone's share server, over the LAN or a Wi-Fi Direct group) into the library.
+     * A refused or timed-out connection is retried up to [attempts] times, which covers a link that is still coming up.
+     */
+    suspend fun fetchUrl(payload: SharePayload, url: String, connectTimeoutMs: Int = 8_000, attempts: Int = 1, onProgress: (have: Long, total: Long) -> Unit = { _, _ -> }): Long? = withContext(Dispatchers.IO) {
+        for (attempt in 1..attempts) {
+            val conn = try { java.net.URL(url).openConnection() as java.net.HttpURLConnection } catch (e: Exception) { error("Bad file link") }
+            conn.connectTimeout = connectTimeoutMs; conn.readTimeout = 120_000
+            try {
+                val code = try { conn.responseCode } catch (e: java.io.IOException) { -1 }
+                if (code == -1) { if (attempt < attempts) kotlinx.coroutines.delay(600); continue }
+                if (code !in 200..299) error("The other phone answered $code. Is its Share screen still open?")
+                val mime = conn.contentType?.substringBefore(';') ?: "audio/mpeg"
+                val total = conn.contentLengthLong
+                return@withContext conn.inputStream.use { place(payload, mime, it, total, onProgress) }
+            } finally { conn.disconnect() }
+        }
+        error("Could not reach the other phone. Both phones need to be on the same Wi-Fi or hotspot, with its Share screen still open.")
     }
 
-    /** A file that arrived some other way (NFC): moves it into Music/CUEd and returns the new track id, or null if the scan missed it. */
+    /** A file that arrived some other way (Bluetooth, NFC): moves it into Music/CUEd and returns the new track id, or null if the scan missed it. */
     suspend fun importFile(payload: SharePayload, mime: String, file: java.io.File): Long? = withContext(Dispatchers.IO) {
         file.inputStream().use { place(payload, mime, it) }
     }
 
-    private suspend fun place(payload: SharePayload, mime: String, source: java.io.InputStream): Long? {
+    private suspend fun place(payload: SharePayload, mime: String, source: java.io.InputStream, total: Long = -1, onProgress: (Long, Long) -> Unit = { _, _ -> }): Long? {
         val ext = when (mime) { "audio/mp4", "audio/x-m4a" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg", "audio/opus" -> "ogg"; "audio/wav", "audio/x-wav" -> "wav"; else -> "mp3" }
         val name = "${payload.artist} - ${payload.title}.$ext".replace(Regex("[\\\\/:*?\"<>|]"), "_")
         val (uri, id) = dev.cued.app.download.DownloadManager.createPendingAudio(graph.app, name, mime)
-        graph.app.contentResolver.openOutputStream(uri)!!.use { out -> source.copyTo(out) }
+        graph.app.contentResolver.openOutputStream(uri)!!.use { out ->
+            val buf = ByteArray(64 * 1024)
+            var have = 0L
+            while (true) {
+                val n = source.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                have += n
+                if (total > 0) onProgress(have, total)
+            }
+        }
         dev.cued.app.download.DownloadManager.finishPending(graph.app, uri)
         graph.library.rescan()
         return graph.db.tracks().byMediaStoreId(id)?.let { t ->

@@ -29,19 +29,25 @@ class ShareServer(private val context: Context, private val graph: Graph) {
     /** Ids of tracks currently offered; anything else is refused so the server can't be used to browse the library. */
     private val offered = HashSet<Long>()
 
+    /** The port the server listens on while running (also without a LAN address: a Wi-Fi Direct peer reaches it at the group owner's address). */
+    @Volatile var listeningPort: Int? = null
+        private set
+
+    /** Starts the server on every interface. Returns the LAN base URL, or null when this phone has no Wi-Fi/hotspot address (the server still runs). */
     @Synchronized
     fun start(port: Int): String? {
-        server?.let { return _running.value }
-        val ip = localIpv4() ?: return null
-        return runCatching {
-            Server(port).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false); server = it }
-            "http://$ip:$port".also { _running.value = it }
-        }.onFailure { Log.w(TAG, "share server failed", it) }.getOrNull()
+        if (server == null) {
+            runCatching { Server(port).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false); server = it; listeningPort = port } }
+                .onFailure { Log.w(TAG, "share server failed", it); return null }
+        }
+        _running.value = localIpv4()?.let { "http://$it:${listeningPort ?: port}" }
+        return _running.value
     }
 
     @Synchronized
     fun stop() {
         server?.stop(); server = null
+        listeningPort = null
         _running.value = null
         offered.clear()
     }
@@ -118,7 +124,7 @@ class ShareServer(private val context: Context, private val graph: Graph) {
             val ifaces = runCatching { NetworkInterface.getNetworkInterfaces()?.toList() }.getOrNull() ?: return null
             val preferred = ifaces.sortedBy { if (it.name.startsWith("wlan") || it.name.startsWith("ap") || it.name.startsWith("swlan")) 0 else 1 }
             for (i in preferred) {
-                if (!i.isUp || i.isLoopback) continue
+                if (!i.isUp || i.isLoopback || i.name.startsWith("p2p")) continue // a Wi-Fi Direct group is not the LAN
                 for (a in i.inetAddresses) if (a is Inet4Address && a.isSiteLocalAddress) return a.hostAddress
             }
             return null

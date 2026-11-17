@@ -32,7 +32,19 @@ data class SharePayload(
     val nfcFile: Boolean = false,
     /** One-time token: the sender advertises it over Bluetooth and serves the file to whoever presents it (`dev.cued.core.nfc.BtTransfer`). */
     val btToken: String? = null,
+    /**
+     * A Wi-Fi Direct group the sender opened for this share: its network name (`DIRECT-xy…`),
+     * passphrase, the channel frequency in MHz when known (joining is quicker with it), and the
+     * file's URL on the group owner. The receiver joins without any invitation dialog and
+     * fetches the file at Wi-Fi speed with no router involved. All of name, pass and URL, or none.
+     */
+    val p2pName: String? = null,
+    val p2pPass: String? = null,
+    val p2pFreq: Int? = null,
+    val p2pUrl: String? = null,
 ) {
+    val hasP2p: Boolean get() = p2pName != null && p2pPass != null && p2pUrl != null
+
     fun encode(): String = "${CuedCore.SHARE_SCHEME}://share?" + query()
 
     /**
@@ -55,6 +67,7 @@ data class SharePayload(
         friendPubkey?.let { q["fr"] = it; friendName?.let { n -> q["fn"] = n } }
         if (nfcFile) q["n"] = "1"
         btToken?.let { q["bt"] = it }
+        if (hasP2p) { q["ws"] = p2pName!!; q["wp"] = p2pPass!!; q["wu"] = p2pUrl!!; p2pFreq?.let { q["wq"] = it.toString() } }
         return q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
 
@@ -76,6 +89,9 @@ data class SharePayload(
                 q[pair.substring(0, i)] = dec(pair.substring(i + 1))
             }
             val title = q["t"] ?: return null
+            // A Wi-Fi Direct offer is all or nothing, and only in the shape Android will accept.
+            val p2p = q["ws"]?.takeIf { it.startsWith("DIRECT-") && it.length in 9..32 } != null &&
+                q["wp"]?.let { it.length in 8..63 } == true && q["wu"]?.startsWith("http://") == true
             return SharePayload(
                 title = title,
                 artist = q["a"] ?: "",
@@ -89,6 +105,8 @@ data class SharePayload(
                 friendName = q["fn"],
                 nfcFile = q["n"] == "1",
                 btToken = q["bt"]?.lowercase()?.takeIf { dev.cued.core.nfc.BtTransfer.isToken(it) },
+                p2pName = if (p2p) q["ws"] else null, p2pPass = if (p2p) q["wp"] else null, p2pUrl = if (p2p) q["wu"] else null,
+                p2pFreq = if (p2p) q["wq"]?.toIntOrNull()?.takeIf { it in 2000..7200 } else null,
             )
         }
 

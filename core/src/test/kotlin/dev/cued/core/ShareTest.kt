@@ -18,10 +18,22 @@ class ShareTest {
             fileUrl = "http://192.168.1.5:8765/track/42",
             apkUrl = "http://192.168.1.5:8765/apk",
             genres = listOf("house", "deep house"), bpm = 124.5f, nfcFile = true, btToken = "00ff10ab22cd33ef",
+            p2pName = "DIRECT-CU-a1B2c3", p2pPass = "k3yk3yk3yk3y", p2pFreq = 5180, p2pUrl = "http://192.168.49.1:8765/track/42",
         )
         val s = p.encode()
         assert(s.startsWith("cued://share?"))
         assertEquals(p, SharePayload.decode(s))
+    }
+
+    @Test
+    fun `a half or malformed wifi direct offer is dropped whole`() {
+        val base = "cued://share?v=1&t=T&a=A"
+        assertTrue(SharePayload.decode("$base&ws=DIRECT-CU-abc&wp=12345678&wu=http%3A%2F%2F192.168.49.1%3A8765%2Ftrack%2F1")!!.hasP2p)
+        for (bad in listOf("&ws=DIRECT-CU-abc&wp=12345678", "&ws=HomeWifi&wp=12345678&wu=http%3A%2F%2Fx", "&ws=DIRECT-CU-abc&wp=short&wu=http%3A%2F%2Fx", "&ws=DIRECT-CU-abc&wp=12345678&wu=ftp%3A%2F%2Fx")) {
+            val p = SharePayload.decode(base + bad)!!
+            assertTrue(!p.hasP2p && p.p2pName == null && p.p2pPass == null && p.p2pUrl == null && p.p2pFreq == null, bad)
+        }
+        assertNull(SharePayload.decode("$base&ws=DIRECT-CU-abc&wp=12345678&wu=http%3A%2F%2Fx&wq=99")!!.p2pFreq)
     }
 
     @Test
