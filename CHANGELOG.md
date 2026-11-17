@@ -3,6 +3,15 @@
 The sections below are shown in the app after an update (side menu → Settings → Updates → What's new),
 so keep them short and written for the person holding the phone.
 
+## 0.3.3
+
+- **Share a song over NFC alone.** Tap-to-share used to hand over a Wi-Fi address, so both phones
+  had to be on the same network. Now the whole file can cross by NFC by itself: no Wi-Fi, no
+  hotspot, no internet. When the other phone cannot be reached, the card that opens on a tap
+  offers *Copy over NFC* (Receive has *Receive a file over NFC* too); hold the phones together
+  until the bar fills. It is slow, a few minutes per song, and a slip only pauses it: the next
+  tap carries on from the same byte. The copy is hash-checked before it goes into your library.
+
 ## 0.3.2
 
 - **No more karaoke by mistake.** The built-in downloader refuses karaoke, instrumental, cover and

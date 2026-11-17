@@ -355,7 +355,7 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             val port = graph.settings.sharePort.first()
             val url = withContext(Dispatchers.IO) { graph.shareServer.start(port) }
             graph.shareServer.offer(trackId)
-            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address: only the link can be shared" else null)
+            _state.value = _state.value.copy(serverUrl = url, error = if (url == null) "No Wi-Fi/hotspot address: the file can still go over NFC (hold the phones together), and the link by QR" else null)
             rebuild()
         }
     }
@@ -373,12 +373,16 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             // The friend request rides along as the public key only; the private key never leaves the phone.
             val friendKey = if (s.includeFriend) runCatching { graph.station.store.ensureIdentity().pubkeyHex }.getOrNull() else null
             val friendName = friendKey?.let { graph.station.store.name.first().ifBlank { graph.desktop.store.phoneName.first() }.takeIf { n -> n.isNotBlank() } }
+            // The file goes over NFC alone as well (no network needed): mapped once for the HCE service.
+            val nfcOffered = s.includeFile && withContext(Dispatchers.IO) { dev.cued.app.share.nfc.NfcTransferHolder.offer(graph.app, t, genres) }
+            if (!s.includeFile) dev.cued.app.share.nfc.NfcTransferHolder.clear()
             val sp = SharePayload(
                 title = t.title, artist = t.artist, link = t.sourceLink,
                 fileUrl = if (s.includeFile) graph.shareServer.trackUrl(id) else null,
                 apkUrl = if (s.includeApk) graph.shareServer.apkUrl() else null,
                 genres = genres, bpm = t.bpm,
                 friendPubkey = friendKey, friendName = friendName,
+                nfcFile = nfcOffered,
             )
             // QR carries the web form: a stock camera lands on the download page, CUEd opens it directly.
             // NFC leads with the cued:// form so the receiving CUEd launches straight away (see SharePayloadHolder).
@@ -391,6 +395,7 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
 
     fun stopSharing() {
         dev.cued.app.share.nfc.SharePayloadHolder.set(null, null)
+        dev.cued.app.share.nfc.NfcTransferHolder.clear()
         graph.shareServer.stop()
         _state.value = ShareUiState()
     }
@@ -418,7 +423,13 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
             return "Already received ${payload.title}"
         }
         fun update(st: ReceiveStatus) { val r = Received(payload, st, prev?.repeats ?: 0); seen[key] = r; _received.value = r }
-        update(if (payload.fileUrl != null) ReceiveStatus.Fetching else if (payload.link != null) ReceiveStatus.Queued else ReceiveStatus.Failed("Nothing downloadable in this share"))
+        val initial = when {
+            payload.fileUrl != null -> ReceiveStatus.Fetching
+            payload.nfcFile -> ReceiveStatus.NfcOffered // the other phone has no network address; the card offers the NFC copy
+            payload.link != null -> ReceiveStatus.Queued
+            else -> ReceiveStatus.Failed("Nothing downloadable in this share")
+        }
+        update(initial)
         viewModelScope.launch {
             when {
                 payload.fileUrl != null -> {
@@ -429,11 +440,34 @@ class ShareViewModel(private val graph: Graph) : ViewModel() {
                         .onSuccess { id -> update(if (id != null) ReceiveStatus.Done(id) else ReceiveStatus.Failed("The file arrived but the library could not see it")) }
                         .onFailure { update(ReceiveStatus.Failed(it.message ?: "Transfer failed")) }
                 }
+                payload.nfcFile -> {} // waits for "Copy over NFC" on the card (NfcFileReceiver reports through setStatus)
                 payload.link != null -> { graph.downloads.enqueue(payload.link!!, payload.title, payload.artist); update(ReceiveStatus.Queued) }
                 else -> update(ReceiveStatus.Failed("Nothing downloadable in this share"))
             }
         }
-        return if (payload.fileUrl != null) "Fetching ${payload.title} from the other phone…" else "Queued ${payload.title} for download"
+        return when {
+            payload.fileUrl != null -> "Fetching ${payload.title} from the other phone…"
+            payload.nfcFile -> "${payload.title} can be copied over NFC"
+            else -> "Queued ${payload.title} for download"
+        }
+    }
+
+    /** Status pushed from outside the fetch path (the NFC receiver): shows and remembers the card for [payload]. */
+    fun setStatus(payload: SharePayload, st: ReceiveStatus) {
+        // Called from the NFC callback thread: hop to main so [seen] has one writer.
+        viewModelScope.launch {
+            val key = payload.fileUrl ?: payload.link ?: "${payload.artist}|${payload.title}"
+            val r = Received(payload, st, seen[key]?.repeats ?: 0)
+            seen[key] = r
+            _received.value = r
+        }
+    }
+
+    /** "Download from the source instead": the fallback for an NFC-only share when the other phone is out of reach. */
+    fun queueFromLink(payload: SharePayload) {
+        val link = payload.link ?: return
+        graph.downloads.enqueue(link, payload.title, payload.artist)
+        setStatus(payload, ReceiveStatus.Queued)
     }
 
     fun dismissReceived() { _received.value = null }
@@ -448,6 +482,12 @@ sealed class ReceiveStatus {
     data class Done(val trackId: Long) : ReceiveStatus()
     data class AlreadyHave(val trackId: Long) : ReceiveStatus()
     data class Failed(val reason: String) : ReceiveStatus()
+    /** The share carries no network address for the file, but the other phone offers it over NFC; waiting for the person to start that. */
+    data object NfcOffered : ReceiveStatus()
+    /** Copying over NFC: [have] of [total] bytes (0/0 before the first slice), with a line for the card. */
+    data class Nfc(val have: Long, val total: Long, val note: String) : ReceiveStatus() {
+        val fraction: Float? get() = if (total <= 0) null else (have.toDouble() / total).toFloat().coerceIn(0f, 1f)
+    }
 }
 
 data class Received(val payload: SharePayload, val status: ReceiveStatus, val repeats: Int = 0)
@@ -463,19 +503,28 @@ class LocalFileReceiver(private val graph: Graph) {
             val code = try { conn.responseCode } catch (e: java.io.IOException) { error("Could not reach the other phone. Both phones need to be on the same Wi-Fi or hotspot, with its Share screen still open.") }
             if (code !in 200..299) error("The other phone answered $code. Is its Share screen still open?")
             val mime = conn.contentType?.substringBefore(';') ?: "audio/mpeg"
-            val ext = when (mime) { "audio/mp4" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg" -> "ogg"; else -> "mp3" }
-            val name = "${payload.artist} - ${payload.title}.$ext".replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val (uri, id) = dev.cued.app.download.DownloadManager.createPendingAudio(graph.app, name, mime)
-            graph.app.contentResolver.openOutputStream(uri)!!.use { out -> conn.inputStream.use { it.copyTo(out) } }
-            dev.cued.app.download.DownloadManager.finishPending(graph.app, uri)
-            graph.library.rescan()
-            graph.db.tracks().byMediaStoreId(id)?.let { t ->
-                payload.link?.let { graph.library.setSourceLink(t.id, it) }
-                if (payload.genres.isNotEmpty()) graph.library.setGenresAuto(t.id, payload.genres)
-                if (!t.isLong) graph.analysis.request(t.id)
-                t.id
-            }
+            conn.inputStream.use { place(payload, mime, it) }
         } finally { conn.disconnect() }
+    }
+
+    /** A file that arrived some other way (NFC): moves it into Music/CUEd and returns the new track id, or null if the scan missed it. */
+    suspend fun importFile(payload: SharePayload, mime: String, file: java.io.File): Long? = withContext(Dispatchers.IO) {
+        file.inputStream().use { place(payload, mime, it) }
+    }
+
+    private suspend fun place(payload: SharePayload, mime: String, source: java.io.InputStream): Long? {
+        val ext = when (mime) { "audio/mp4", "audio/x-m4a" -> "m4a"; "audio/flac" -> "flac"; "audio/ogg", "audio/opus" -> "ogg"; "audio/wav", "audio/x-wav" -> "wav"; else -> "mp3" }
+        val name = "${payload.artist} - ${payload.title}.$ext".replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val (uri, id) = dev.cued.app.download.DownloadManager.createPendingAudio(graph.app, name, mime)
+        graph.app.contentResolver.openOutputStream(uri)!!.use { out -> source.copyTo(out) }
+        dev.cued.app.download.DownloadManager.finishPending(graph.app, uri)
+        graph.library.rescan()
+        return graph.db.tracks().byMediaStoreId(id)?.let { t ->
+            payload.link?.let { graph.library.setSourceLink(t.id, it) }
+            if (payload.genres.isNotEmpty()) graph.library.setGenresAuto(t.id, payload.genres)
+            if (!t.isLong) graph.analysis.request(t.id)
+            t.id
+        }
     }
 }
 

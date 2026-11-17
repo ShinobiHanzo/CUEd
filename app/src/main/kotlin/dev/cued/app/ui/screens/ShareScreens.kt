@@ -54,7 +54,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.cued.app.share.QrCodes
+import dev.cued.app.share.nfc.NfcFileReceiver
 import dev.cued.app.share.nfc.NfcReader
+import dev.cued.app.share.nfc.NfcTransferHolder
+import androidx.compose.material3.LinearProgressIndicator
 import dev.cued.app.share.nfc.TagEmulationSession
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -106,7 +109,25 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
             )
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Include the audio file (local transfer)", Modifier.weight(1f)); Switch(checked = state.includeFile, onCheckedChange = vm::setIncludeFile, enabled = state.serverUrl != null)
+                Column(Modifier.weight(1f)) {
+                    Text("Include the audio file")
+                    Text("Over Wi-Fi/hotspot when both phones share one, otherwise over NFC alone: hold the phones together until the bar fills.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                Switch(checked = state.includeFile, onCheckedChange = vm::setIncludeFile)
+            }
+            val nfcSend by NfcTransferHolder.progress.collectAsState()
+            nfcSend?.let { pr ->
+                if (pr.sent > 0 || pr.verdict != null) {
+                    LinearProgressIndicator(progress = { pr.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), color = Teal)
+                    Text(
+                        when (pr.verdict) {
+                            true -> "Sent over NFC and verified on the other phone."
+                            false -> "The other phone's copy did not verify; it will start over on the next tap."
+                            null -> "Sending over NFC: ${pr.sent / 1024} of ${pr.total / 1024} KB. Keep the phones touching."
+                        },
+                        style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Include a link to install CUEd", Modifier.weight(1f)); Switch(checked = state.includeApk, onCheckedChange = vm::setIncludeApk, enabled = state.serverUrl != null)
@@ -123,7 +144,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
                 when {
                     nfc == null || !nfc.available -> "This phone has no NFC."
                     !nfc.enabled -> "NFC is off. Turn it on in system settings for tap-to-share."
-                    else -> "NFC ready: hold the phones back-to-back. The other phone needs CUEd installed and its screen on; it reads this one like a tag and opens the share straight in CUEd. No CUEd on that phone yet? Let it scan the QR code instead: that opens the download page."
+                    else -> "NFC ready: hold the phones back-to-back. The other phone needs CUEd installed and its screen on; it reads this one like a tag and opens the share straight in CUEd. With no shared Wi-Fi, its card offers \"Copy over NFC\": keep the phones together and the whole file crosses by NFC alone. No CUEd on that phone yet? Let it scan the QR code instead: that opens the download page."
                 }, style = MaterialTheme.typography.bodySmall, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center,
             )
             nfcProblem?.let { Text("NFC note: $it. If the phone asks which NFC service to use, pick CUEd.", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
@@ -154,7 +175,7 @@ fun ShareScreen(vm: ShareViewModel, trackId: Long, trackTitle: String, onBack: (
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit, onStation: (String) -> Unit = {}, onPair: (String) -> Unit = {}, onFriend: (String) -> Unit = {}) {
+fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -> Unit, onStation: (String) -> Unit = {}, onPair: (String) -> Unit = {}, onFriend: (String) -> Unit = {}, nfc: NfcFileReceiver? = null) {
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycle = LocalLifecycleOwner.current
@@ -164,7 +185,12 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
     var status by remember { mutableStateOf<String?>(null) }
     var handled by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
-    val nfc = remember(activity) { activity?.let { NfcReader(it) } }
+    val reader = remember(activity) { activity?.let { NfcReader(it) } }
+    val nfcListening by remember(nfc) { nfc?.active ?: kotlinx.coroutines.flow.MutableStateFlow(false) }.collectAsState()
+    val nfcNote by remember(nfc) { nfc?.note ?: kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }.collectAsState()
+    var startedHere by remember { mutableStateOf(false) }
+    // Leaving the screen ends the reader mode it started, so the ordinary tap-to-share path works again from anywhere.
+    DisposableEffect(nfc) { onDispose { if (startedHere) nfc?.stop() } }
 
     fun handle(text: String) {
         if (handled) return
@@ -188,12 +214,22 @@ fun ReceiveScreen(vm: ShareViewModel, onBack: () -> Unit, onReceived: (String) -
             Text("NFC", style = MaterialTheme.typography.titleMedium)
             Text(
                 when {
-                    nfc == null || !nfc.available -> "This phone has no NFC. Use the QR code or a pasted link."
-                    !nfc.enabled -> "NFC is off. Turn it on in system settings; then a tap works from any screen."
+                    reader == null || !reader.available -> "This phone has no NFC. Use the QR code or a pasted link."
+                    !reader.enabled -> "NFC is off. Turn it on in system settings; then a tap works from any screen."
+                    nfcListening -> "Listening for the other phone's file. Hold the phones back-to-back with its Share screen open; the card shows the bar filling."
                     else -> "Ready. Keep the screen on and hold the phones back-to-back while the other one shows its Share screen. The share opens in CUEd on its own; you do not need to stay here."
                 },
-                style = MaterialTheme.typography.bodyMedium, color = if (nfc?.enabled == true) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium, color = if (reader?.enabled == true) Teal else Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
             )
+            if (reader?.enabled == true && nfc != null) {
+                Text(
+                    "No Wi-Fi or hotspot in common? The whole song can still cross by NFC alone. It is slow (a few minutes per song) and the phones must stay touching, but it needs no network at all.",
+                    style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp),
+                )
+                if (!nfcListening) Button(onClick = { startedHere = nfc.start(null) }, modifier = Modifier.padding(top = 8.dp)) { Text("Receive a file over NFC") }
+                else OutlinedButton(onClick = { nfc.stop(); startedHere = false }, modifier = Modifier.padding(top = 8.dp)) { Text("Stop listening") }
+                nfcNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
+            }
             Spacer(Modifier.height(24.dp))
             Text("QR code", style = MaterialTheme.typography.titleMedium)
             if (!scanning) {

@@ -12,6 +12,11 @@ import android.os.Bundle
  * Protocol (NFC Forum T4T): SELECT the NDEF application, SELECT the
  * capability container (E103) or the NDEF file (E104), READ BINARY.
  * The older CUEd-only AID is still answered for receivers on previous versions.
+ *
+ * Under the CUEd AID the same service also hands out the whole audio file
+ * to a CUEd phone in reader mode (`dev.cued.core.nfc.NfcTransfer`, INS C0–C2):
+ * tap-to-share that needs no Wi-Fi at all. The offered file lives in
+ * [NfcTransferHolder] while the Share screen is open.
  */
 class CuedHceService : HostApduService() {
     private var selected: ByteArray? = null
@@ -19,6 +24,13 @@ class CuedHceService : HostApduService() {
     override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
         val apdu = commandApdu ?: return SW_ERROR
         val ndefFile = SharePayloadHolder.ndefFile ?: return SW_NO_DATA
+        // Whole-file transfer (CLA 80, INS C0..C2) comes before the legacy branches; it never overlaps them.
+        NfcTransferHolder.responder?.let { r ->
+            r.handle(apdu)?.let { reply ->
+                if (apdu.size >= 2 && apdu[1] == dev.cued.core.nfc.NfcTransfer.INS_DONE) NfcTransferHolder.noteVerdict(apdu[2] == 0x01.toByte())
+                return reply
+            }
+        }
         return when {
             isSelectByName(apdu, NDEF_AID) -> { selected = null; SW_OK }
             isSelectFile(apdu, CC_ID) -> { selected = capabilityContainer(ndefFile.size); SW_OK }

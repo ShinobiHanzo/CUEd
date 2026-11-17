@@ -17,7 +17,7 @@ class ShareTest {
             link = "https://open.spotify.com/track/abc?si=123",
             fileUrl = "http://192.168.1.5:8765/track/42",
             apkUrl = "http://192.168.1.5:8765/apk",
-            genres = listOf("house", "deep house"), bpm = 124.5f,
+            genres = listOf("house", "deep house"), bpm = 124.5f, nfcFile = true,
         )
         val s = p.encode()
         assert(s.startsWith("cued://share?"))

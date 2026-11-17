@@ -211,6 +211,9 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
         }
     }
 
+    // Whole-file NFC transfer (reader side); one per activity so the card and the Receive screen never fight over reader mode.
+    val nfcReceiver = remember(context) { (context as? android.app.Activity)?.let { dev.cued.app.share.nfc.NfcFileReceiver(it, graph, svm::setStatus) } }
+    DisposableEffect(nfcReceiver) { onDispose { nfcReceiver?.stop() } }
     val received by svm.received.collectAsState()
     received?.let { r ->
         ReceivedSplash(
@@ -218,7 +221,12 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
             onPlay = { t -> pvm.play(listOf(t)); svm.dismissReceived(); nav.navigate(Route.NOW_PLAYING) { launchSingleTop = true } },
             onOpenDownloads = { svm.dismissReceived(); nav.navigate(Route.DOWNLOADS) { launchSingleTop = true } },
             onFetchAnyway = { svm.receive(r.payload, force = true) },
-            onDismiss = svm::dismissReceived,
+            onDismiss = { if (r.status is ReceiveStatus.Nfc) nfcReceiver?.stop(); svm.dismissReceived() },
+            onNfc = {
+                val ok = nfcReceiver?.start(r.payload) == true
+                if (!ok) scope.launch { snackbar.showSnackbar(if (nfcReceiver?.available != true) "This phone has no NFC" else "NFC is off. Turn it on in system settings.") }
+            },
+            onQueueLink = { svm.queueFromLink(r.payload) },
         )
     }
 
@@ -507,6 +515,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
                 }
                 composable("receive") {
                     ReceiveScreen(svm, onBack = { nav.popBackStack() }, onReceived = { nav.popBackStack() }, // the ReceivedSplash shows what came in
+                        nfc = nfcReceiver,
                         onStation = { link ->
                             nav.popBackStack()
                             if (stvm.ready.value) { stvm.follow(link) { msg -> scope.launch { snackbar.showSnackbar(msg) } }; nav.navigate("following") { launchSingleTop = true } }

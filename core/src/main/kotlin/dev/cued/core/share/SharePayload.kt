@@ -28,6 +28,8 @@ data class SharePayload(
     /** "Send a friend request with it": the sender's account pubkey (hex) and name. */
     val friendPubkey: String? = null,
     val friendName: String? = null,
+    /** The sender's Share screen also serves the file over NFC alone (no network needed; see `dev.cued.core.nfc.NfcTransfer`). */
+    val nfcFile: Boolean = false,
 ) {
     fun encode(): String = "${CuedCore.SHARE_SCHEME}://share?" + query()
 
@@ -49,6 +51,7 @@ data class SharePayload(
         if (genres.isNotEmpty()) q["g"] = genres.joinToString(",")
         bpm?.let { q["b"] = "%.1f".format(java.util.Locale.ROOT, it) }
         friendPubkey?.let { q["fr"] = it; friendName?.let { n -> q["fn"] = n } }
+        if (nfcFile) q["n"] = "1"
         return q.entries.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
 
@@ -81,6 +84,7 @@ data class SharePayload(
                 version = q["v"]?.toIntOrNull() ?: 1,
                 friendPubkey = q["fr"]?.lowercase()?.takeIf { it.length == 64 && it.all { c -> Character.digit(c, 16) >= 0 } },
                 friendName = q["fn"],
+                nfcFile = q["n"] == "1",
             )
         }
 
