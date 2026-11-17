@@ -213,7 +213,7 @@ fun CuedRoot(graph: Graph, inbound: StateFlow<Inbound?>, onInboundHandled: () ->
 
     // Whole-file NFC transfer (reader side); one per activity so the card and the Receive screen never fight over reader mode.
     val nfcReceiver = remember(context) { (context as? android.app.Activity)?.let { dev.cued.app.share.nfc.NfcFileReceiver(it, graph, svm::setStatus) } }
-    DisposableEffect(nfcReceiver) { onDispose { nfcReceiver?.stop() } }
+    androidx.compose.runtime.DisposableEffect(nfcReceiver) { onDispose { nfcReceiver?.stop() } }
     val received by svm.received.collectAsState()
     received?.let { r ->
         ReceivedSplash(
