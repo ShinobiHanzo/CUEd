@@ -3,6 +3,14 @@
 The sections below are shown in the app after an update (side menu → Settings → Updates → What's new),
 so keep them short and written for the person holding the phone.
 
+## 0.3.5
+
+- **Fixed a crash during playback with tempo-match on.** When a track had been slowed to match
+  the next one, the time-stretcher could trip at the end of the track or at a speed change; CUEd
+  then crashed while skipping past the error. The stretcher fault is fixed (by moving to the
+  player library release that corrects it), and an error on one track can no longer take the
+  app down: it skips to the next track as intended.
+
 ## 0.3.4
 
 - **Phone-to-phone sharing at Wi-Fi speed.** With no Wi-Fi network in common, the tap or the QR

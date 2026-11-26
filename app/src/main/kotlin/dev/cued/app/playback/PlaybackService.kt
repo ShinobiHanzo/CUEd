@@ -144,7 +144,8 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+        // media3 1.6 keeps the service in the foreground for a while after a pause, so a bare stopSelf() no longer ends it.
+        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) pauseAllPlayersAndStopSelf()
     }
 
     override fun onDestroy() {

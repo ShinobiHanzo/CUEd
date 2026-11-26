@@ -223,7 +223,9 @@ class CrossfadePlayer(
             .setAvailableCommands(COMMANDS)
             .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setPlaybackState(playbackState)
-            .setPlayerError(lastError)
+            // SimpleBasePlayer throws on an error outside STATE_IDLE, and a deck reports BUFFERING the instant it is
+            // re-prepared, which can be before the code that started the recovery has cleared the error.
+            .setPlayerError(lastError.takeIf { playbackState == Player.STATE_IDLE })
             .setPlaylist(items)
             .setCurrentMediaItemIndex(if (playlist.isEmpty()) C.INDEX_UNSET else currentIndex.coerceIn(0, playlist.size - 1))
             .setContentPositionMs(PositionSupplier { activePositionMs() })
@@ -427,13 +429,13 @@ class CrossfadePlayer(
         if (target != currentIndex) {
             finishCurrentAsSkipped()
             currentIndex = target
+            lastError = null
             active.stopAndClear()
             active.load(playlist[currentIndex], pos)
             active.player.playWhenReady = playWhenReady
-            lastError = null
         } else {
             active.applySpeed(1f); active.applyGain(1f)
-            if (active.player.playbackState == Player.STATE_IDLE && prepared) active.player.prepare()
+            if (active.player.playbackState == Player.STATE_IDLE && prepared) { lastError = null; active.player.prepare() }
             active.player.seekTo(pos)
         }
         disarm()
@@ -492,10 +494,10 @@ class CrossfadePlayer(
         }
         handler.post {
             currentIndex = next
+            lastError = null // before the reload: load() prepares the deck, which publishes a state straight away
             active.stopAndClear()
             active.load(playlist[currentIndex], 0L)
             active.player.playWhenReady = playWhenReady
-            lastError = null
             invalidateState()
         }
     }
